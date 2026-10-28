@@ -111,7 +111,7 @@ function state_(p, role) {
   };
 }
 function attendanceRange_(p) {
-  return { attendance: tbl_('Attendance').all().filter(r => r.status !== 'void' && r.date >= p.from && r.date <= p.to && (!p.teenId || r.teenId === p.teenId)).map(r => pubAtt_(r, 'team')) };
+  return { attendance: tbl_('Attendance').all().filter(r => r.status !== 'void' && r.date >= p.from && r.date <= p.to && (!p.teenId || r.teenId === p.teenId)).map(r => p.slim ? { id: r.id, teenId: r.teenId, branchId: r.branchId, serviceId: r.serviceId, date: r.date, checkIn: r.checkIn, checkOut: r.checkOut, by: r.checkedInBy } : pubAtt_(r, 'team')) };
 }
 
 /* ---------- Attendance writes (append-only; opId makes retries safe) ---------- */

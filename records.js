@@ -279,6 +279,7 @@ export function initRecords({ store, getV, esc, toast, sheet, closeSheet }) {
   }
 
   return {
+    unlock,
     show() { if (!built) build(); tools(); list(); loadAtt().catch(() => {}); },
     onData() { if (built && !$('#records').hidden) { tools(); list(); } }
   };
