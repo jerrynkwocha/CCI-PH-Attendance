@@ -127,6 +127,7 @@ class AppsScriptStore {
   addTeen(teen) { return this.dispatch('addTeen', { teen }); }
   _ref(row) { return { id: String(row.id).startsWith('tmp_') ? undefined : row.id, refOpId: row.opId }; }
 
+  read(action, params = {}) { return this._call({ action, ...params }); } // online reads/writes that skip the queue
   async admin(action, params = {}) {
     const d = await this._call({ action, ...params });
     this.refresh(true);

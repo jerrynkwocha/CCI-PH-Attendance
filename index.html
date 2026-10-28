@@ -42,6 +42,11 @@ nav button.on{color:var(--pri)}
 .toast button{background:rgba(255,255,255,.25);border:0;color:#fff;border-radius:10px;padding:12px 16px;font:inherit;font-weight:700}
 .muted{color:var(--mut)}
 .login{min-height:100vh;display:grid;align-content:center;padding:24px}
+.left{text-align:left}.left h3{margin:14px 0 4px}.three{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.three .btn{margin-top:0}
+.stat{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}
+.src{background:#fff;border:1px solid var(--line);border-radius:16px;padding:12px;margin-bottom:10px}.src>select{margin:8px 0}
+.map{display:grid;grid-template-columns:1fr 1.3fr;gap:8px;align-items:center;margin-bottom:6px;font-size:14px}.map select{margin:0;min-height:44px;font-size:15px}
+.x{border:0;background:none;font-size:20px;min-width:44px;min-height:44px}.tbl{width:100%;font-size:13px;border-collapse:collapse;margin-top:8px}.tbl td{padding:5px 4px;border-top:1px solid var(--line)}
 </style></head><body>
 
 <div id="login" class="login" hidden>
@@ -63,6 +68,7 @@ nav button.on{color:var(--pri)}
       <div id="list"></div>
       <button class="fab" id="add">+ New teen</button>
     </main>
+    <main id="records" hidden></main>
     <main id="soon" hidden></main>
   </div>
   <nav>
@@ -76,6 +82,7 @@ nav button.on{color:var(--pri)}
 <script type="module">
 import { createStore, todayStr } from './store.js';
 import { APPS_SCRIPT_URL } from './config.js';
+import { initRecords } from './records.js';
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -219,10 +226,12 @@ $('#add').onclick = () => {
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
   document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
   const ci = b.dataset.t === 'in';
-  $('#checkin').hidden = !ci; $('#soon').hidden = ci; $('#add').hidden = !ci || mode !== 'in';
+  const rc = b.dataset.t === 'rec'; $('#checkin').hidden = !ci; $('#records').hidden = !rc; $('#soon').hidden = ci || rc; $('#add').hidden = !ci || mode !== 'in';
   $('header b').textContent = b.textContent.slice(1);
-  if (!ci) $('#soon').innerHTML = `<h2>${esc(b.textContent.slice(1))}</h2><p class="muted">Coming in a later stage.</p>`;
+  if (rc) records.show(); else if (!ci) $('#soon').innerHTML = `<h2>${esc(b.textContent.slice(1))}</h2><p class="muted">Coming in a later stage.</p>`;
 });
+
+const records = initRecords({ store, getV: () => V, esc, toast, sheet, closeSheet });
 
 /* ---------- login + boot ---------- */
 function showLogin(msg) {
@@ -239,7 +248,7 @@ $('#l-go').onclick = async () => {
 store.subscribe((v, s) => {
   V = v; pill(s);
   if (store.locked && $('#login').hidden) showLogin('Access code changed. Enter the new one.');
-  render();
+  render(); records.onData();
 });
 if (store.auth.code || store.auth.pin) enter(); else showLogin();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');

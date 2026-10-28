@@ -52,7 +52,7 @@ const ROUTES = { // [handler, adminOnly]
   undoCheckIn: [undoCheckIn_, false], undoCheckOut: [undoCheckOut_, false], addTeen: [addTeen_, false],
   saveTeen: [saveTeen_, true], saveBranch: [p => saveSimple_('Branches', ['name','location'], 'b', p.item), true],
   saveService: [p => saveSimple_('Services', ['name','day','time','branchId'], 's', p.item), true],
-  setSecrets: [setSecrets_, true], attendanceRange: [attendanceRange_, true], bulkAdd: [bulkAdd_, true]
+  setSecrets: [setSecrets_, true], attendanceRange: [attendanceRange_, false], bulkAdd: [bulkAdd_, true], readSheet: [readSheet_, true]
 };
 function route_(p, role) {
   const r = ROUTES[p.action];
@@ -111,7 +111,7 @@ function state_(p, role) {
   };
 }
 function attendanceRange_(p) {
-  return { attendance: tbl_('Attendance').all().filter(r => r.status !== 'void' && r.date >= p.from && r.date <= p.to).map(r => pubAtt_(r, 'team')) };
+  return { attendance: tbl_('Attendance').all().filter(r => r.status !== 'void' && r.date >= p.from && r.date <= p.to && (!p.teenId || r.teenId === p.teenId)).map(r => pubAtt_(r, 'team')) };
 }
 
 /* ---------- Attendance writes (append-only; opId makes retries safe) ---------- */
@@ -218,13 +218,28 @@ function bulkAdd_(p) { // used by the Stage 4 import tool; max 500 rows per call
   return withLock_(() => {
     const name = p.table;
     if (['Teenagers', 'Attendance'].indexOf(name) < 0) throw fail_('bad_table');
-    const rows = (p.rows || []).slice(0, 500).map(r => {
+    let rows = (p.rows || []).slice(0, 500).map(r => {
       const o = Object.assign({}, r, { id: newId_(name === 'Teenagers' ? 't' : 'att') });
       if (name === 'Teenagers') { o.status = o.status || 'active'; o.dateAdded = o.dateAdded || today_(); }
       else o.status = o.status || 'in';
       return o;
     });
+    let skipped = 0;
+    if (name === 'Attendance') { // never double-count a teen at the same service and date
+      const seen = new Set(tbl_('Attendance').all().filter(r => r.status !== 'void').map(r => r.teenId + '|' + r.serviceId + '|' + r.date));
+      rows = rows.filter(r => { const k = r.teenId + '|' + r.serviceId + '|' + r.date; if (seen.has(k)) { skipped++; return false; } seen.add(k); return true; });
+    }
     tbl_(name).addMany(rows);
-    return { added: rows.length, ids: rows.map(r => r.id) };
+    return { added: rows.length, skipped, ids: rows.map(r => r.id) };
   });
+}
+
+// Reads one tab of a Google Sheet your account can open (used by Import > Connect Google Sheet).
+function readSheet_(p) {
+  const m = String(p.url || '').match(/\/d\/([a-zA-Z0-9_-]+)/);
+  if (!m) throw fail_('bad_url', 'That is not a Google Sheets link');
+  let ss; try { ss = SpreadsheetApp.openById(m[1]); } catch (e) { throw fail_('no_access', 'Cannot open that Sheet. Share it with the Google account that owns this script.'); }
+  const gid = (String(p.url).match(/[#&?]gid=(\d+)/) || [])[1];
+  const sh = (gid && ss.getSheets().find(s => String(s.getSheetId()) === gid)) || ss.getSheets()[0];
+  return { name: ss.getName() + ' / ' + sh.getName(), rows: sh.getDataRange().getDisplayValues().slice(0, 5000) };
 }
