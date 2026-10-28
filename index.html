@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#4f46e5">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png"><link rel="apple-touch-icon" href="icon-192.png">
+<title>Teen Attendance</title>
+<style>
+:root{--bg:#f6f7fb;--card:#fff;--ink:#111827;--mut:#6b7280;--pri:#4f46e5;--ok:#16a34a;--bad:#dc2626;--line:#e5e7eb}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.35 system-ui,sans-serif;padding-bottom:calc(150px + env(safe-area-inset-bottom))}
+[hidden]{display:none!important}
+header{position:sticky;top:0;z-index:5;background:var(--card);padding:calc(10px + env(safe-area-inset-top)) 14px 10px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line)}
+header b{font-size:18px}
+.pill{font-size:13px;font-weight:700;padding:6px 10px;border-radius:99px}
+.saved{background:#dcfce7;color:#166534}.syncing{background:#fef3c7;color:#92400e}.offline{background:#e5e7eb;color:#374151}
+.wrap{padding:12px 14px}
+select,input{width:100%;min-height:52px;font:inherit;font-size:17px;padding:0 14px;border:1.5px solid var(--line);border-radius:14px;background:#fff;margin:0 0 10px}
+.two,.seg,.seg2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.seg{margin-bottom:10px}.seg2{margin-bottom:10px}
+.seg button,.seg2 button{min-height:52px;border:1.5px solid var(--line);background:#fff;border-radius:14px;font:inherit;font-weight:700}
+.seg button.on,.seg2 button.on{background:var(--pri);border-color:var(--pri);color:#fff}
+.row{width:100%;min-height:64px;display:flex;justify-content:space-between;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:10px 16px;margin-bottom:8px;font:inherit;font-size:17px;text-align:left;color:var(--ink)}
+.row small{display:block;color:var(--mut);font-size:14px}
+.row i{font-style:normal;font-weight:700;color:var(--pri);white-space:nowrap}
+.row.done{opacity:.55}.row.done i{color:var(--ok)}
+.btn{display:flex;align-items:center;justify-content:center;width:100%;min-height:56px;border-radius:16px;border:1.5px solid var(--line);background:#fff;font:inherit;font-size:17px;font-weight:700;margin-top:10px;color:var(--ink);text-decoration:none}
+.btn.primary{background:var(--pri);border-color:var(--pri);color:#fff}.btn.wa{background:#25d366;border-color:#25d366;color:#fff}.btn.ghost{border-color:transparent;color:var(--mut)}
+.fab{position:fixed;right:14px;bottom:calc(84px + env(safe-area-inset-bottom));min-height:56px;padding:0 22px;border:0;border-radius:99px;background:var(--pri);color:#fff;font:inherit;font-size:17px;font-weight:700;box-shadow:0 6px 18px rgba(79,70,229,.4)}
+nav{position:fixed;left:0;right:0;bottom:0;display:grid;grid-template-columns:repeat(4,1fr);background:var(--card);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
+nav button{min-height:68px;border:0;background:none;font:inherit;font-size:13px;font-weight:700;color:var(--mut)}
+nav button.on{color:var(--pri)}
+.sheet{position:fixed;inset:0;background:rgba(17,24,39,.55);display:flex;align-items:flex-end;z-index:20}
+.card{background:#fff;width:100%;max-height:92vh;overflow:auto;border-radius:24px 24px 0 0;padding:20px 16px calc(20px + env(safe-area-inset-bottom));text-align:center}
+.card h2{margin:4px 0}.card details{text-align:left;margin-bottom:10px}.card summary{min-height:44px;display:flex;align-items:center;color:var(--mut);font-weight:600}
+.tick{width:84px;height:84px;margin:0 auto 6px;border-radius:50%;background:var(--ok);color:#fff;font-size:52px;display:grid;place-items:center}
+.code{font-size:72px;font-weight:800;letter-spacing:12px;margin:8px 0 4px;padding-left:12px}
+.codein{text-align:center;font-size:32px;letter-spacing:10px}
+.toast{position:fixed;left:14px;right:14px;top:calc(70px + env(safe-area-inset-top));z-index:30;padding:14px 16px;border-radius:14px;color:#fff;display:flex;justify-content:space-between;align-items:center;font-weight:700}
+.toast.ok{background:var(--ok)}.toast.err{background:var(--bad)}
+.toast button{background:rgba(255,255,255,.25);border:0;color:#fff;border-radius:10px;padding:12px 16px;font:inherit;font-weight:700}
+.muted{color:var(--mut)}
+.login{min-height:100vh;display:grid;align-content:center;padding:24px}
+</style></head><body>
+
+<div id="login" class="login" hidden>
+  <h1>Teen Attendance</h1>
+  <p class="muted" id="lmsg">Enter the team access code.</p>
+  <input id="l-code" type="password" placeholder="Team access code" autocomplete="off">
+  <input id="l-name" placeholder="Your name">
+  <input id="l-pin" type="password" inputmode="numeric" placeholder="Admin PIN (admins only)">
+  <button class="btn primary" id="l-go">Continue</button>
+</div>
+
+<div id="app" hidden>
+  <header><b>Check In</b><span id="sync" class="pill saved">● Saved</span></header>
+  <div class="wrap">
+    <main id="checkin">
+      <div class="two"><select id="branch"></select><select id="service"></select></div>
+      <div class="seg"><button id="t-in" class="on">Check In</button><button id="t-out">Checked In (<span id="cnt">0</span>)</button></div>
+      <input id="q" type="search" placeholder="Search name…" autocomplete="off">
+      <div id="list"></div>
+      <button class="fab" id="add">+ New teen</button>
+    </main>
+    <main id="soon" hidden></main>
+  </div>
+  <nav>
+    <button class="on" data-t="in">✓<br>Check In</button><button data-t="rec">☰<br>Records</button>
+    <button data-t="dash">▦<br>Dashboard</button><button data-t="set">⚙<br>Settings</button>
+  </nav>
+</div>
+<div id="sheet" class="sheet" hidden></div>
+<div id="toast" class="toast" hidden></div>
+
+<script type="module">
+import { createStore, todayStr } from './store.js';
+import { APPS_SCRIPT_URL } from './config.js';
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const hm = iso => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+const store = createStore({ url: APPS_SCRIPT_URL, onError: (op, e) => toast(e.message, 'err') });
+const today = todayStr();
+let V = store.view(), mode = 'in', q = '', ctx = JSON.parse(localStorage.getItem('att.ctx') || '{}');
+
+/* ---------- small UI helpers ---------- */
+let tt;
+function toast(msg, kind = 'ok', undo) {
+  const t = $('#toast'); t.className = 'toast ' + kind;
+  t.innerHTML = `<span>${kind === 'ok' ? '✓ ' : ''}${esc(msg)}</span>${undo ? '<button id="tu">Undo</button>' : ''}`;
+  t.hidden = false;
+  if (undo) $('#tu').onclick = () => { undo(); t.hidden = true; };
+  clearTimeout(tt); tt = setTimeout(() => t.hidden = true, undo ? 5000 : 3000);
+}
+const sheet = html => { $('#sheet').innerHTML = `<div class="card">${html}</div>`; $('#sheet').hidden = false; };
+const closeSheet = () => $('#sheet').hidden = true;
+const pill = s => {
+  const p = $('#sync'), n = V.queued ? ` (${V.queued})` : '';
+  p.className = 'pill ' + s;
+  p.textContent = s === 'saved' ? '● Saved' : s === 'syncing' ? '● Syncing' + n : '● Offline' + n;
+};
+
+/* ---------- branch / service context (remembered per device) ---------- */
+function fill(sel, opts, val) {
+  const el = $(sel), h = opts.map(([v, t]) => `<option value="${esc(v)}">${esc(t)}</option>`).join('');
+  if (el.dataset.h !== h) { el.innerHTML = h; el.dataset.h = h; }
+  el.value = val;
+}
+const services = () => V.services.filter(s => !s.branchId || s.branchId === ctx.branchId);
+function fixCtx() {
+  if (!V.branches.length) return;
+  if (!V.branches.some(b => b.id === ctx.branchId)) { ctx.branchId = V.branches[0].id; ctx.serviceId = ''; }
+  const sv = services();
+  if (!sv.some(s => s.id === ctx.serviceId)) ctx.serviceId = sv[0]?.id || '';
+  localStorage.setItem('att.ctx', JSON.stringify(ctx));
+  fill('#branch', V.branches.map(b => [b.id, b.name]), ctx.branchId);
+  fill('#service', sv.map(s => [s.id, `${s.name} · ${s.day} ${s.time}`]), ctx.serviceId);
+}
+$('#branch').onchange = e => { ctx.branchId = e.target.value; ctx.serviceId = ''; render(); };
+$('#service').onchange = e => { ctx.serviceId = e.target.value; render(); };
+
+/* ---------- list rendering ---------- */
+function render() {
+  fixCtx();
+  const list = $('#list');
+  if (!ctx.serviceId) { list.innerHTML = '<p class="muted">Add a branch and a service in the Sheet (Branches and Services tabs) to start.</p>'; return; }
+  const tm = new Map(V.teens.map(t => [t.id, t]));
+  const att = V.attendance.filter(r => r.serviceId === ctx.serviceId && r.date === today && r.status !== 'void');
+  const open = att.filter(r => !r.checkOut), byTeen = new Map(att.map(r => [r.teenId, r]));
+  const words = q.toLowerCase().split(/\s+/).filter(Boolean), hit = n => words.every(w => n.toLowerCase().includes(w));
+  $('#cnt').textContent = open.length;
+  if (mode === 'in') {
+    const rows = V.teens.filter(t => t.status !== 'archived' && hit(t.fullName)).sort((a, b) => a.fullName.localeCompare(b.fullName)).slice(0, 40);
+    list.innerHTML = rows.map(t => {
+      const a = byTeen.get(t.id);
+      return `<button class="row ${a ? 'done' : ''}" data-t="${esc(t.id)}" ${a ? 'disabled' : ''}><span><b>${esc(t.fullName)}</b><small>${esc([t.age, t.gender].filter(Boolean).join(' · '))}</small></span><i>${a ? (a.checkOut ? 'Out' : '✓ In') : 'Check in'}</i></button>`;
+    }).join('') || '<p class="muted">No match. Tap “+ New teen”.</p>';
+  } else {
+    const rows = open.map(a => ({ a, n: tm.get(a.teenId)?.fullName || 'Unknown' })).filter(x => hit(x.n)).sort((x, y) => x.n.localeCompare(y.n));
+    list.innerHTML = rows.map(({ a, n }) => `<button class="row" data-a="${esc(a.id)}"><span><b>${esc(n)}</b><small>In ${hm(a.checkIn)}${a.pending ? ' · syncing' : ''}</small></span><i>Check out</i></button>`).join('') || '<p class="muted">Nobody checked in yet.</p>';
+  }
+}
+$('#list').onclick = e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.t) {
+    const t = V.teens.find(x => x.id === b.dataset.t); if (!t) return;
+    checkInTeen(t.fullName, t.id.startsWith('tmp_') ? { teenRefOpId: t.id.slice(4) } : { teenId: t.id }, t.guardianPhone);
+  } else openOut(b.dataset.a);
+};
+$('#q').oninput = e => { q = e.target.value; render(); };
+const setMode = m => { mode = m; $('#t-in').classList.toggle('on', m === 'in'); $('#t-out').classList.toggle('on', m === 'out'); $('#add').hidden = m !== 'in'; render(); };
+$('#t-in').onclick = () => setMode('in'); $('#t-out').onclick = () => setMode('out');
+
+/* ---------- check in + guardian code ---------- */
+function checkInTeen(name, ref, phone) {
+  const r = store.checkIn({ branchId: ctx.branchId, serviceId: ctx.serviceId, date: today, ...ref });
+  const svc = V.services.find(s => s.id === ctx.serviceId)?.name || 'service';
+  const msg = `${name} is checked in at ${svc}. Pickup code: ${r.guardianCode}`;
+  const d = phone ? String(phone).replace(/\D/g, '').replace(/^0/, '234') : '';
+  sheet(`<div class="tick">✓</div><h2>${esc(name)}</h2><p class="muted">Checked in · give this code to the guardian</p>
+    <div class="code">${r.guardianCode}</div>
+    <a class="btn wa" target="_blank" rel="noopener" href="https://wa.me/${d}?text=${encodeURIComponent(msg)}">Share via WhatsApp</a>
+    <a class="btn" href="sms:${d ? '+' + d : ''}?&body=${encodeURIComponent(msg)}">Share via SMS</a>
+    <button class="btn ghost" id="undo">Undo check-in</button><button class="btn primary" id="done">Done</button>`);
+  $('#done').onclick = closeSheet;
+  $('#undo').onclick = () => { store.undoCheckIn({ id: 'tmp_' + r.opId, opId: r.opId }); closeSheet(); toast('Check-in undone'); };
+}
+
+/* ---------- check out ---------- */
+function openOut(aid) {
+  const a = V.attendance.find(r => r.id === aid); if (!a) return;
+  const name = V.teens.find(t => t.id === a.teenId)?.fullName || 'Unknown';
+  sheet(`<h2>${esc(name)}</h2><p class="muted">In since ${hm(a.checkIn)}</p>
+    <input id="code" class="codein" inputmode="numeric" maxlength="4" placeholder="Code" autocomplete="off">
+    <input id="note" placeholder="Note (optional)">
+    <button class="btn primary" id="go">Verify &amp; check out</button>
+    <button class="btn" id="skip">Skip code</button><button class="btn ghost" id="x">Cancel</button>`);
+  const finish = () => { closeSheet(); toast(`${name} checked out`, 'ok', () => store.undoCheckOut(a)); };
+  $('#skip').onclick = () => { store.checkOut(a, { note: $('#note').value.trim(), skipCode: true }); finish(); };
+  $('#go').onclick = async () => {
+    const code = $('#code').value.trim();
+    if (!/^\d{4}$/.test(code)) return toast('Enter the 4-digit code', 'err');
+    if (!navigator.onLine) return toast('Offline: use Skip code, or reconnect', 'err');
+    $('#go').disabled = true;                         // the server verifies the code, so wait for its answer
+    try { await store.checkOut(a, { note: $('#note').value.trim(), code }).done; finish(); }
+    catch { $('#go').disabled = false; }              // bad code: the error toast already shows
+  };
+  $('#x').onclick = closeSheet;
+}
+
+/* ---------- quick add ---------- */
+$('#add').onclick = () => {
+  let g = '';
+  sheet(`<h2>New teen</h2>
+    <input id="n-name" placeholder="Full name *" autocomplete="off">
+    <div class="seg2"><button data-g="Male">Male</button><button data-g="Female">Female</button></div>
+    <input id="n-age" type="number" inputmode="numeric" placeholder="Age *">
+    <input id="n-gp" type="tel" placeholder="Guardian phone *">
+    <details><summary>More details (optional)</summary>
+      <input id="n-gn" placeholder="Guardian name"><input id="n-ph" type="tel" placeholder="Teen's phone"><input id="n-med" placeholder="Allergies / medical notes">
+    </details>
+    <button class="btn primary" id="save">Save &amp; check in</button><button class="btn ghost" id="x">Cancel</button>`);
+  $('#n-name').value = q;
+  document.querySelectorAll('.seg2 button').forEach(b => b.onclick = () => {
+    g = b.dataset.g; document.querySelectorAll('.seg2 button').forEach(x => x.classList.toggle('on', x === b));
+  });
+  $('#x').onclick = closeSheet;
+  $('#save').onclick = () => {
+    const v = id => $(id).value.trim(), fullName = v('#n-name'), age = v('#n-age'), guardianPhone = v('#n-gp');
+    if (!fullName || !g || !age || !guardianPhone) return toast('Name, gender, age and guardian phone are required', 'err');
+    const a = store.addTeen({ fullName, gender: g, age, guardianPhone, guardianName: v('#n-gn'), phone: v('#n-ph'), medicalNotes: v('#n-med'), homeBranchId: ctx.branchId });
+    $('#q').value = q = '';
+    checkInTeen(fullName, { teenRefOpId: a.opId }, guardianPhone);
+  };
+};
+
+/* ---------- bottom nav (other modules arrive in later stages) ---------- */
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
+  const ci = b.dataset.t === 'in';
+  $('#checkin').hidden = !ci; $('#soon').hidden = ci; $('#add').hidden = !ci || mode !== 'in';
+  $('header b').textContent = b.textContent.slice(1);
+  if (!ci) $('#soon').innerHTML = `<h2>${esc(b.textContent.slice(1))}</h2><p class="muted">Coming in a later stage.</p>`;
+});
+
+/* ---------- login + boot ---------- */
+function showLogin(msg) {
+  $('#app').hidden = true; $('#login').hidden = false; $('#l-name').value = store.auth.usher || '';
+  if (msg) $('#lmsg').textContent = msg;
+}
+function enter() { $('#login').hidden = true; $('#app').hidden = false; store.start(today); render(); }
+$('#l-go').onclick = async () => {
+  const b = $('#l-go'); b.disabled = true;
+  try { await store.login($('#l-code').value.trim(), $('#l-pin').value.trim() || undefined, $('#l-name').value.trim() || 'Usher'); enter(); }
+  catch (e) { $('#lmsg').textContent = e.message; }
+  b.disabled = false;
+};
+store.subscribe((v, s) => {
+  V = v; pill(s);
+  if (store.locked && $('#login').hidden) showLogin('Access code changed. Enter the new one.');
+  render();
+});
+if (store.auth.code || store.auth.pin) enter(); else showLogin();
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
+</script>
+</body></html>
