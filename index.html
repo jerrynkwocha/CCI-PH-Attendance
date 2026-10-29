@@ -75,6 +75,8 @@ nav button.on{color:var(--pri)}
 .lbl{display:block;text-align:left;margin:0 0 4px 4px;font-size:13px}
 select{text-overflow:ellipsis}#branch,#service{font-size:16px}
 .hd{display:flex;justify-content:space-between;align-items:center}.hd .x{color:var(--mut)}
+.today{margin:0 0 10px;font-weight:700;font-size:17px}
+.codein::placeholder{letter-spacing:0;font-size:18px}
 </style></head><body>
 
 <div id="login" class="login" hidden>
@@ -90,6 +92,7 @@ select{text-overflow:ellipsis}#branch,#service{font-size:16px}
   <header><b>Check In</b><span id="sync" class="pill saved">● Saved</span></header>
   <div class="wrap">
     <main id="checkin">
+      <p id="today" class="today"></p>
       <div><select id="branch"></select><select id="service"></select></div>
       <div class="seg"><button id="t-in" class="on">Check In</button><button id="t-out">Checked In (<span id="cnt">0</span>)</button></div>
       <input id="q" type="search" placeholder="Search name…" autocomplete="off">
@@ -120,7 +123,7 @@ const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const hm = iso => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 const store = createStore({ url: APPS_SCRIPT_URL, onError: (op, e) => toast(e.message, 'err') });
-const today = todayStr();
+let today = todayStr();
 let V = store.view(), mode = 'in', q = '', ctx = JSON.parse(localStorage.getItem('att.ctx') || '{}');
 
 /* ---------- small UI helpers ---------- */
@@ -161,6 +164,9 @@ $('#service').onchange = e => { ctx.serviceId = e.target.value; render(); };
 
 /* ---------- list rendering ---------- */
 function render() {
+  const d = todayStr();
+  if (d !== today) { today = d; store.start(today); } // app left open overnight: move to the new day
+  $('#today').textContent = new Date().toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   fixCtx();
   const list = $('#list');
   if (!ctx.serviceId) { list.innerHTML = '<p class="muted">Add a branch and a service in Settings (Admin PIN) to start.</p>'; return; }
@@ -203,7 +209,7 @@ function checkInTeen(name, ref, phone) {
   const svc = V.services.find(s => s.id === ctx.serviceId)?.name || 'service';
   const msg = `${name} is checked in at ${svc}. Pickup code: ${r.guardianCode}`;
   const d = phone ? String(phone).replace(/\D/g, '').replace(/^0/, '234') : '';
-  sheet(`<div class="tick">✓</div><h2>${esc(name)}</h2><p class="muted">Checked in · give this code to the guardian</p>
+  sheet(`<div class="tick">✓</div><h2>${esc(name)}</h2><p class="muted">Checked in at ${hm(new Date().toISOString())} · give this code to the guardian</p>
     <div class="code">${r.guardianCode}</div>
     <a class="btn wa" target="_blank" rel="noopener" href="https://wa.me/${d}?text=${encodeURIComponent(msg)}">Share via WhatsApp</a>
     <a class="btn" href="sms:${d ? '+' + d : ''}?&body=${encodeURIComponent(msg)}">Share via SMS</a>
@@ -217,16 +223,16 @@ function openOut(aid) {
   const a = V.attendance.find(r => r.id === aid); if (!a) return;
   const name = V.teens.find(t => t.id === a.teenId)?.fullName || 'Unknown';
   sheet(`<h2>${esc(name)}</h2><p class="muted">In since ${hm(a.checkIn)}</p>
-    <input id="code" class="codein" inputmode="numeric" maxlength="4" placeholder="Code" autocomplete="off">
+    <input id="code" class="codein" inputmode="numeric" maxlength="4" placeholder="Code (optional)" autocomplete="off">
     <input id="note" placeholder="Note (optional)">
-    <button class="btn primary" id="go">Verify &amp; check out</button>
-    <button class="btn" id="skip">Skip code</button><button class="btn ghost" id="x">Cancel</button>`);
+    <p class="muted" style="margin:0">Leave the code blank if the guardian does not have it.</p>
+    <button class="btn primary" id="go">Check out</button><button class="btn ghost" id="x">Cancel</button>`);
   const finish = () => { closeSheet(); toast(`${name} checked out`, 'ok', () => store.undoCheckOut(a)); };
-  $('#skip').onclick = () => { store.checkOut(a, { note: $('#note').value.trim(), skipCode: true }); finish(); };
   $('#go').onclick = async () => {
     const code = $('#code').value.trim();
-    if (!/^\d{4}$/.test(code)) return toast('Enter the 4-digit code', 'err');
-    if (!navigator.onLine) return toast('Offline: use Skip code, or reconnect', 'err');
+    if (!code) { store.checkOut(a, { note: $('#note').value.trim(), skipCode: true }); return finish(); } // blank = code skipped
+    if (!/^\d{4}$/.test(code)) return toast('The code is 4 digits. Leave it blank to skip.', 'err');
+    if (!navigator.onLine) return toast('Offline: leave the code blank, or reconnect', 'err');
     $('#go').disabled = true;                         // the server verifies the code, so wait for its answer
     try { await store.checkOut(a, { note: $('#note').value.trim(), code }).done; finish(); }
     catch { $('#go').disabled = false; }              // bad code: the error toast already shows
@@ -236,26 +242,29 @@ function openOut(aid) {
 
 /* ---------- quick add ---------- */
 $('#add').onclick = () => {
-  let g = '';
+  let g = '', ft = '';
   sheet(`<div class="hd"><h2>New teen</h2><button class="x" id="n-x" aria-label="Close">✕</button></div>
     <input id="n-name" placeholder="Full name *" autocomplete="off">
-    <div class="seg2"><button data-g="Male">Male</button><button data-g="Female">Female</button></div>
+    <div class="seg2" id="n-g"><button data-g="Male">Male</button><button data-g="Female">Female</button></div>
     <div class="two"><div><small class="muted lbl">Age</small><input id="n-age" type="number" inputmode="numeric" placeholder="Age"></div><div><small class="muted lbl">Birthday</small><input id="n-dob" type="date"></div></div>
     <input id="n-ph" type="tel" placeholder="Teen's phone *">
     <select id="n-hb"><option value="">${HOME}</option>${V.branches.map(b => `<option value="${esc(b.id)}"${b.id === ctx.branchId ? ' selected' : ''}>${esc(b.name)}</option>`).join('')}</select>
+    <p class="muted lbl">Is this their first time visiting?</p>
+    <div class="seg2" id="n-ft"><button data-f="yes">Yes, first time</button><button data-f="no">No, been before</button></div>
     <details><summary>More details (optional)</summary>
       <input id="n-gp" type="tel" placeholder="Guardian phone"><input id="n-gn" placeholder="Guardian name"><input id="n-med" placeholder="Allergies / medical notes">
     </details>
     <button class="btn primary" id="save">Save &amp; check in</button><button class="btn ghost" id="x">Cancel</button>`);
   $('#n-name').value = q; $('#n-x').onclick = closeSheet;
-  document.querySelectorAll('.seg2 button').forEach(b => b.onclick = () => {
-    g = b.dataset.g; document.querySelectorAll('.seg2 button').forEach(x => x.classList.toggle('on', x === b));
+  document.querySelectorAll('#n-g button, #n-ft button').forEach(b => b.onclick = () => {
+    b.parentElement.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+    if (b.dataset.g) g = b.dataset.g; else ft = b.dataset.f;
   });
   $('#x').onclick = closeSheet;
   $('#save').onclick = () => {
     const v = id => $(id).value.trim(), fullName = v('#n-name'), age = v('#n-age'), dob = v('#n-dob'), phone = v('#n-ph'), guardianPhone = v('#n-gp');
-    if (!fullName || !g || !phone || (!age && !dob)) return toast('Name, gender, teen phone and age or birthday are required', 'err');
-    const a = store.addTeen({ fullName, gender: g, age, dob, phone, guardianPhone, guardianName: v('#n-gn'), medicalNotes: v('#n-med'), homeBranchId: $('#n-hb').value });
+    if (!fullName || !g || !phone || (!age && !dob) || !ft) return toast('Name, gender, teen phone, age or birthday, and first-time answer are required', 'err');
+    const a = store.addTeen({ fullName, gender: g, age, dob, phone, guardianPhone, guardianName: v('#n-gn'), medicalNotes: v('#n-med'), homeBranchId: $('#n-hb').value, firstTimer: ft });
     $('#q').value = q = '';
     checkInTeen(fullName, { teenRefOpId: a.opId }, guardianPhone || phone);
   };

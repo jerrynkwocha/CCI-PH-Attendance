@@ -8,7 +8,7 @@ const TF = [
   ['fullName', 'Full name', /name/i], ['gender', 'Gender', /gender|sex/i], ['age', 'Age', /^age/i],
   ['dob', 'Date of birth', /dob|birth/i], ['phone', 'Teen phone', /phone|mobile|tel|whatsapp|contact/i],
   ['homeBranch', HOME, /branch|campus|location/i], ['medicalNotes', 'Medical notes', /medical|allerg|health/i],
-  ['dateAdded', 'Date joined', /join|added|register|since/i]
+  ['dateAdded', 'Date joined', /join|added|register|since/i], ['firstTimer', 'First timer (yes/no)', /first.?time/i]
 ];
 const AF = [
   ['name', 'Teen name', /name/i], ['phone', 'Phone (helps matching)', /phone|mobile|tel/i], ['date', 'Date', /date|day/i],
@@ -133,7 +133,7 @@ export function initRecords({ store, getV, esc, toast, sheet, closeSheet }) {
     const row = (k, v) => v ? `<div class="stat"><span class="muted">${k}</span><b>${esc(v)}</b></div>` : '';
     sheet(`<div class="left"><h2>${esc(t.fullName)}${t.status === 'archived' ? ' (archived)' : ''}</h2>
       ${row('Gender', t.gender)}${row('Age', isNaN(age) ? '' : age)}${row('Date of birth', t.dob)}${row('Phone', t.phone)}${row('Guardian', t.guardianName)}
-      ${admin ? row('Guardian phone', t.guardianPhone) + row('Medical notes', t.medicalNotes) : ''}${row(HOME, bName(t.homeBranchId))}${row('Added', t.dateAdded)}
+      ${admin ? row('Guardian phone', t.guardianPhone) + row('Medical notes', t.medicalNotes) : ''}${row(HOME, bName(t.homeBranchId))}${row('Added', t.dateAdded)}${row('First-time visitor at sign-up', t.firstTimer === 'yes' ? 'Yes' : t.firstTimer === 'no' ? 'No' : '')}
       <h3>Attendance</h3><div id="p-att" class="muted">Loading…</div>
       ${admin ? `<button class="btn" id="p-edit">Edit</button><button class="btn" id="p-arch">${t.status === 'archived' ? 'Restore' : 'Archive'}</button>` : ''}
       <button class="btn primary" id="p-x">Close</button></div>`);
@@ -159,12 +159,13 @@ export function initRecords({ store, getV, esc, toast, sheet, closeSheet }) {
       <div class="seg2">${['Male', 'Female'].map(x => `<button data-g="${x}" class="${g === x ? 'on' : ''}">${x}</button>`).join('')}</div>
       ${inp('age', 'Age', 'number')}${inp('dob', 'Date of birth (YYYY-MM-DD)')}${inp('phone', "Teen's phone *", 'tel')}${inp('guardianName', 'Guardian name')}${inp('guardianPhone', 'Guardian phone', 'tel')}
       <select id="f-homeBranchId"><option value="">${HOME}</option>${getV().branches.map(b => `<option value="${esc(b.id)}"${b.id === t.homeBranchId ? ' selected' : ''}>${esc(b.name)}</option>`).join('')}</select>
+      <select id="f-firstTimer"><option value="">First time visiting at sign-up?</option><option value="yes"${t.firstTimer === 'yes' ? ' selected' : ''}>Yes, first time</option><option value="no"${t.firstTimer === 'no' ? ' selected' : ''}>No, been before</option></select>
       ${inp('medicalNotes', 'Allergies / medical notes')}
       <button class="btn primary" id="f-save">Save</button><button class="btn ghost" id="f-x">Cancel</button></div>`);
     document.querySelectorAll('.seg2 button').forEach(b => b.onclick = () => { g = b.dataset.g; document.querySelectorAll('.seg2 button').forEach(x => x.classList.toggle('on', x === b)); });
     $('#f-x').onclick = closeSheet;
     $('#f-save').onclick = () => {
-      const v = {}; ['fullName', 'age', 'dob', 'phone', 'guardianName', 'guardianPhone', 'homeBranchId', 'medicalNotes'].forEach(k => v[k] = $('#f-' + k).value.trim());
+      const v = {}; ['fullName', 'age', 'dob', 'phone', 'guardianName', 'guardianPhone', 'homeBranchId', 'medicalNotes', 'firstTimer'].forEach(k => v[k] = $('#f-' + k).value.trim());
       if (!v.fullName || (!t.id && !v.phone)) return toast('Name and teen phone are required', 'err');
       save({ ...(t.id ? { id: t.id } : {}), ...v, gender: g });
     };
@@ -172,7 +173,7 @@ export function initRecords({ store, getV, esc, toast, sheet, closeSheet }) {
 
   /* ---------- export ---------- */
   function exportCsv() {
-    const H = ['fullName', 'gender', 'age', 'dob', 'phone', 'guardianName', 'guardianPhone', 'homeBranch', 'medicalNotes', 'dateAdded', 'status'];
+    const H = ['fullName', 'gender', 'age', 'dob', 'phone', 'guardianName', 'guardianPhone', 'homeBranch', 'medicalNotes', 'dateAdded', 'status', 'firstTimer'];
     download(`teens-${todayStr()}.csv`, csv([H.map(k => k === 'homeBranch' ? 'homeCampus' : k), ...filtered().map(t => H.map(k => k === 'homeBranch' ? bName(t.homeBranchId) : t[k]))]));
     toast('Exported ' + filtered().length + ' teens');
   }
@@ -238,12 +239,13 @@ export function initRecords({ store, getV, esc, toast, sheet, closeSheet }) {
     const st = { merged: 0, existing: 0, flag: 0, attBad: 0, noCampus: 0 };
     // campus text may be "Akpajo" or "Akpajo campus"; falls back to the campus chosen for that file
     const hbOf = (s, txt) => V.branches.find(b => { const x = norm(b.name), y = norm(txt); return y && (y === x || y.includes(x) || x.includes(y)); })?.id || s.hb || '';
+    const yn = v => /^(y|yes|true|1)$/i.test(v) ? 'yes' : /^(n|no|false|0)$/i.test(v) ? 'no' : '';
     for (const s of src.filter(s => s.kind === 'teens')) for (const r of s.rows.slice(1)) {
       const name = cell(r, s, 'fullName'); if (!name) continue;
       const t = {
         fullName: name, gender: gender(cell(r, s, 'gender')), age: (cell(r, s, 'age').match(/\d+/) || [''])[0], dob: pDate(cell(r, s, 'dob')),
         phone: cell(r, s, 'phone'), guardianName: cell(r, s, 'guardianName'), guardianPhone: cell(r, s, 'guardianPhone'), medicalNotes: cell(r, s, 'medicalNotes'),
-        dateAdded: pDate(cell(r, s, 'dateAdded')), homeBranchId: hbOf(s, cell(r, s, 'homeBranch'))
+        dateAdded: pDate(cell(r, s, 'dateAdded')), homeBranchId: hbOf(s, cell(r, s, 'homeBranch')), firstTimer: yn(cell(r, s, 'firstTimer'))
       };
       const n = norm(name), ph = phones(t.phone, t.guardianPhone), hit = find(n, ph);
       if (cell(r, s, 'homeBranch') && !t.homeBranchId) st.noCampus++;

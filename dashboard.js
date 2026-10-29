@@ -6,7 +6,7 @@ const wk = d => { const x = new Date(d + 'T00:00:00'); x.setDate(x.getDate() - (
 const m = (v, k) => `<div class="m"><b>${v}</b><span>${k}</span></div>`;
 
 export function initDashboard({ store, getV, esc, toast, unlock }) {
-  const $ = s => document.querySelector(s), today = todayStr();
+  const $ = s => document.querySelector(s); let today = todayStr();
   const f = { b: '', s: '', from: addDays(today, -55), to: today };
   let built = false, all = null, at = 0, loading = false;
   const isAdmin = () => getV().role === 'admin';
@@ -18,8 +18,8 @@ export function initDashboard({ store, getV, esc, toast, unlock }) {
     $('#d-from').value = f.from; $('#d-to').value = f.to;
     $('#d-b').onchange = e => { f.b = e.target.value; f.s = ''; render(); };
     $('#d-s').onchange = e => { f.s = e.target.value; render(); };
-    $('#d-from').onchange = e => { f.from = e.target.value || f.from; render(); };
-    $('#d-to').onchange = e => { f.to = e.target.value || f.to; render(); };
+    $('#d-from').onchange = e => { f.from = e.target.value || f.from; f.touched = true; render(); };
+    $('#d-to').onchange = e => { f.to = e.target.value || f.to; f.touched = true; render(); };
     $('#d-body').onclick = e => { const a = e.target.closest('button')?.dataset.a; if (a === 'unlock') unlock(); else if (a === 'reload') load(true); };
     built = true;
   }
@@ -42,6 +42,7 @@ export function initDashboard({ store, getV, esc, toast, unlock }) {
   }
   function render() {
     if (!built) return;
+    today = todayStr();
     $('#d-f').hidden = !isAdmin();
     if (!isAdmin()) return mini();
     filters(); if (!all) load(); else compute();
@@ -56,7 +57,7 @@ export function initDashboard({ store, getV, esc, toast, unlock }) {
     const uniq = [...new Set(rows.map(r => r.teenId))].map(id => tm.get(id)).filter(Boolean);
     const nowIn = V.attendance.filter(r => r.date === today && r.status !== 'void' && !r.checkOut && inB(r) && inS(r)).length;
     const first = new Map(); all.forEach(r => { const c = first.get(r.teenId); if (!c || r.date < c.date) first.set(r.teenId, r); });
-    const firstTimers = [...first.values()].filter(r => inB(r) && inS(r) && inR(r)).length;
+    const firstTimers = [...first.values()].filter(r => inB(r) && inS(r) && inR(r) && tm.get(r.teenId)?.firstTimer !== 'no').length; // teens marked "been before" are not first-timers
     const newTeens = V.teens.filter(t => t.dateAdded >= f.from && t.dateAdded <= f.to && (!f.b || t.homeBranchId === f.b)).length;
     const sessions = new Set(rows.map(r => r.serviceId + '|' + r.date)).size;
     const mins = rows.filter(r => r.checkIn && r.checkOut).map(r => (Date.parse(r.checkOut) - Date.parse(r.checkIn)) / 6e4).filter(x => x > 0 && x < 720);
@@ -105,5 +106,5 @@ export function initDashboard({ store, getV, esc, toast, unlock }) {
       <button class="btn ghost" data-a="reload">Refresh data</button>`);
   }
 
-  return { show() { if (!built) build(); render(); if (isAdmin()) load(true); }, onData() { if (built && !$('#dash').hidden) render(); } };
+  return { show() { if (!built) build(); today = todayStr(); if (!f.touched) { f.to = today; f.from = addDays(today, -55); $('#d-from').value = f.from; $('#d-to').value = f.to; } render(); if (isAdmin()) load(true); }, onData() { if (built && !$('#dash').hidden) render(); } };
 }

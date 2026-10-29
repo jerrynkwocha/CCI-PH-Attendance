@@ -5,12 +5,12 @@
  * The browser only ever talks to this script, never to the Sheet.
  */
 const SCHEMA = {
-  Teenagers: ['id','fullName','gender','age','dob','phone','guardianName','guardianPhone','homeBranchId','medicalNotes','dateAdded','status','opId'],
+  Teenagers: ['id','fullName','gender','age','dob','phone','guardianName','guardianPhone','homeBranchId','medicalNotes','dateAdded','status','opId','firstTimer'],
   Branches:  ['id','name','location'],
   Services:  ['id','name','day','time','branchId'],
   Attendance:['id','teenId','branchId','serviceId','date','checkIn','checkOut','checkoutNote','guardianCode','checkedInBy','checkedOutBy','codeCheck','status','opId']
 };
-const TEEN_EDIT = ['fullName','gender','age','dob','phone','guardianName','guardianPhone','homeBranchId','medicalNotes','status'];
+const TEEN_EDIT = ['fullName','gender','age','dob','phone','guardianName','guardianPhone','homeBranchId','medicalNotes','status','firstTimer'];
 const ADMIN_ONLY = ['guardianPhone','medicalNotes'];
 
 function setup() {
