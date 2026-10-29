@@ -2,7 +2,7 @@
 <html lang="en"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#4f46e5">
+<meta name="theme-color" content="#ad3229">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon-192.png"><link rel="apple-touch-icon" href="icon-192.png">
 <title>Celebteens PH CheckIn App</title>
@@ -28,7 +28,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <style>
-:root{--bg:#f6f7fb;--card:#fff;--ink:#111827;--mut:#6b7280;--pri:#4f46e5;--ok:#16a34a;--bad:#dc2626;--line:#e5e7eb}
+:root{--bg:#f8f6f5;--card:#fff;--ink:#1c1917;--mut:#78716c;--pri:#ad3229;--pri-d:#80221a;--tint:#faeeed;--ring:rgba(173,50,41,.18);--ok:#15803d;--bad:#b42318;--line:#e7e2e0}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.35 system-ui,sans-serif;padding-bottom:calc(150px + env(safe-area-inset-bottom))}
 [hidden]{display:none!important}
@@ -77,9 +77,38 @@ select{text-overflow:ellipsis}#branch,#service{font-size:16px}
 .hd{display:flex;justify-content:space-between;align-items:center}.hd .x{color:var(--mut)}
 .today{margin:0 0 10px;font-weight:700;font-size:17px}
 .codein::placeholder{letter-spacing:0;font-size:18px}
+
+/* ---- Celebteens brand theme ---- */
+@font-face{font-family:Inter;src:url(inter.woff2) format('woff2');font-weight:100 900;font-display:swap}
+body{font-family:Inter,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+.brand{display:flex;align-items:center;gap:10px}.brand img{width:36px;height:36px;border-radius:50%}
+.row,.acc,.src,.m,.card{box-shadow:0 1px 2px rgba(28,25,23,.05)}
+.btn,.row,.acc,.fab,.seg button,.seg2 button{transition:transform .08s,background .15s,border-color .15s}
+.btn:active,.row:active,.acc:active,.fab:active{transform:scale(.98)}
+.btn.primary:active,.fab:active{background:var(--pri-d)}
+.btn.primary{box-shadow:0 4px 12px var(--ring)}
+input:focus,select:focus{outline:none;border-color:var(--pri);box-shadow:0 0 0 3px var(--ring)}
+.fab{box-shadow:0 8px 20px var(--ring)}
+.hb div{background:var(--tint)}
+.card{animation:up .22s ease-out}.sheet{animation:fade .2s}
+@keyframes up{from{transform:translateY(28px);opacity:.4}}@keyframes fade{from{opacity:0}}
+nav button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px}
+nav svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.toast.err{background:#1c1917}.toast.err span::before{content:'⚠ '}
+.login img{display:block;width:96px;height:96px;margin:0 auto 14px}.login h1{text-align:center;font-size:24px;margin:0 0 6px}.login p{text-align:center}
+.acc{width:100%;min-height:56px;display:flex;justify-content:space-between;align-items:center;gap:8px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:0 16px;margin:0 0 8px;font:inherit;font-weight:700;color:var(--ink);text-align:left}
+.acc small{font-weight:600;margin-left:6px}
+.chev{width:9px;height:9px;border-right:2px solid var(--mut);border-bottom:2px solid var(--mut);transform:rotate(45deg);margin:-3px 4px 0 0;transition:transform .15s}.chev.up{transform:rotate(225deg);margin-top:3px}
+#report{margin-top:18px}
+.rep{display:grid;grid-template-columns:1fr 52px 52px 58px;gap:6px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.rep b{text-align:center}.rep.h{font-size:12px;color:var(--mut);font-weight:700}.rep.h b{font-weight:700}.rep.t{font-weight:800}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+.outrow i{color:var(--ok)}
+.made{text-align:center;margin:28px 0 8px;font-size:13px;color:var(--mut)}.made a{color:var(--pri);font-weight:600;text-decoration:none;padding:6px 2px}
 </style></head><body>
 
 <div id="login" class="login" hidden>
+  <img src="logo.png" alt="Celebteens" width="96" height="96">
   <h1>Celebteens PH CheckIn App</h1>
   <p class="muted" id="lmsg">Enter the team access code.</p>
   <input id="l-code" type="password" placeholder="Team access code" autocomplete="off">
@@ -89,14 +118,15 @@ select{text-overflow:ellipsis}#branch,#service{font-size:16px}
 </div>
 
 <div id="app" hidden>
-  <header><b>Check In</b><span id="sync" class="pill saved">● Saved</span></header>
+  <header><div class="brand"><img src="logo.png" alt="" width="36" height="36"><b>Check In</b></div><span id="sync" class="pill saved">● Saved</span></header>
   <div class="wrap">
     <main id="checkin">
       <p id="today" class="today"></p>
       <div><select id="branch"></select><select id="service"></select></div>
-      <div class="seg"><button id="t-in" class="on">Check In</button><button id="t-out">Checked In (<span id="cnt">0</span>)</button></div>
+      <div class="seg"><button id="t-in" class="on">Check In (<span id="cnt-in">0</span>)</button><button id="t-out">Check Out (<span id="cnt">0</span>)</button></div>
       <input id="q" type="search" placeholder="Search name…" autocomplete="off">
       <div id="list"></div>
+      <div id="report"></div>
       <button class="fab" id="add">+ New teen</button>
     </main>
     <main id="records" hidden></main>
@@ -105,8 +135,8 @@ select{text-overflow:ellipsis}#branch,#service{font-size:16px}
     <main id="soon" hidden></main>
   </div>
   <nav>
-    <button class="on" data-t="in">✓<br>Check In</button><button data-t="rec">☰<br>Records</button>
-    <button data-t="dash">▦<br>Dashboard</button><button data-t="set">⚙<br>Settings</button>
+    <button class="on" data-t="in"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><span>Check In</span></button><button data-t="rec"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>Records</span></button>
+    <button data-t="dash"><svg viewBox="0 0 24 24" aria-hidden="true"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg><span>Dashboard</span></button><button data-t="set"><svg viewBox="0 0 24 24" aria-hidden="true"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg><span>Settings</span></button>
   </nav>
 </div>
 <div id="sheet" class="sheet" hidden></div>
@@ -125,6 +155,7 @@ const hm = iso => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute
 const store = createStore({ url: APPS_SCRIPT_URL, onError: (op, e) => toast(e.message, 'err') });
 let today = todayStr();
 let V = store.view(), mode = 'in', q = '', ctx = JSON.parse(localStorage.getItem('att.ctx') || '{}');
+let accT = null, lastOpenT = true, accR = false, accO = false; // Teenagers list: null = automatic (collapsed above 10)
 
 /* ---------- small UI helpers ---------- */
 let tt;
@@ -159,8 +190,8 @@ function fixCtx() {
   fill('#branch', V.branches.map(b => [b.id, b.name]), ctx.branchId);
   fill('#service', sv.map(s => [s.id, `${s.name} · ${s.day} ${s.time}`]), ctx.serviceId);
 }
-$('#branch').onchange = e => { ctx.branchId = e.target.value; ctx.serviceId = ''; render(); };
-$('#service').onchange = e => { ctx.serviceId = e.target.value; render(); };
+$('#branch').onchange = e => { accT = null; ctx.branchId = e.target.value; ctx.serviceId = ''; render(); };
+$('#service').onchange = e => { accT = null; ctx.serviceId = e.target.value; render(); };
 
 /* ---------- list rendering ---------- */
 function render() {
@@ -175,7 +206,7 @@ function render() {
   const att = here.filter(r => r.branchId === ctx.branchId);
   const open = att.filter(r => !r.checkOut), byTeen = new Map(here.map(r => [r.teenId, r]));
   const words = q.toLowerCase().split(/\s+/).filter(Boolean), hit = n => words.every(w => n.toLowerCase().includes(w));
-  $('#cnt').textContent = open.length;
+  $('#cnt-in').textContent = att.length; $('#cnt').textContent = att.length - open.length; // Check In = everyone checked in; Check Out = how many have left $('#q').hidden = false; $('#report').innerHTML = V.role === 'admin' ? reportHtml() : ''; // report is for admins only
   if (mode === 'in') {
     const rows = V.teens.filter(t => t.status !== 'archived' && hit(t.fullName)).sort((a, b) => a.fullName.localeCompare(b.fullName)).slice(0, 40);
     list.innerHTML = rows.map(t => {
@@ -184,17 +215,43 @@ function render() {
     }).join('') || '<p class="muted">No match. Tap “+ New teen”.</p>';
   } else {
     const rows = open.map(a => ({ a, n: tm.get(a.teenId)?.fullName || 'Unknown' })).filter(x => hit(x.n)).sort((x, y) => x.n.localeCompare(y.n));
-    list.innerHTML = (open.length ? `<button class="btn warn" id="co-all">End of service: check out all (${open.length})</button>` : '') + rows.map(({ a, n }) => `<button class="row" data-a="${esc(a.id)}"><span><b>${esc(n)}</b><small>In ${hm(a.checkIn)}${a.pending ? ' · syncing' : ''}</small></span><i>Check out</i></button>`).join('') || '<p class="muted">Nobody checked in yet.</p>';
+    const openT = accT === null ? open.length <= 10 : accT; lastOpenT = openT;
+    const outRows = att.filter(r => r.checkOut).map(a => ({ a, n: tm.get(a.teenId)?.fullName || 'Unknown' })).filter(x => hit(x.n)).sort((x, y) => y.a.checkOut.localeCompare(x.a.checkOut));
+    const outHtml = `<button class="acc" data-acc="o" style="margin-top:10px"><span>Checked out <small class="muted">${att.length - open.length}</small></span><em class="chev ${accO ? 'up' : ''}"></em></button>` +
+      (accO ? outRows.map(({ a, n }) => `<div class="row outrow"><span><b>${esc(n)}</b><small>In ${hm(a.checkIn)} · Out ${hm(a.checkOut)}${a.pending ? ' · syncing' : ''}</small></span><i>✓ Out</i></div>`).join('') || '<p class="muted">Nobody checked out yet.</p>' : '');
+    const body = (open.length ? `<button class="btn warn" id="co-all">End of service: check out all (${open.length})</button>` : '') + rows.map(({ a, n }) => `<button class="row" data-a="${esc(a.id)}"><span><b>${esc(n)}</b><small>In ${hm(a.checkIn)}${a.pending ? ' · syncing' : ''}</small></span><i>Check out</i></button>`).join('') || '<p class="muted">Nobody checked in yet.</p>';
+    list.innerHTML = `<button class="acc" data-acc="t"><span>Teenagers <small class="muted">${open.length} still in</small></span><em class="chev ${openT ? 'up' : ''}"></em></button>` + (openT ? body : '') + outHtml;
+    $('#q').hidden = !openT;
   }
 }
 $('#list').onclick = e => {
   const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.acc === 'o') { accO = !accO; return render(); }
+  if (b.dataset.acc) { accT = !lastOpenT; return render(); }
   if (b.id === 'co-all') return coAll();
   if (b.dataset.t) {
     const t = V.teens.find(x => x.id === b.dataset.t); if (!t) return;
     checkInTeen(t.fullName, t.id.startsWith('tmp_') ? { teenRefOpId: t.id.slice(4) } : { teenId: t.id }, t.guardianPhone);
   } else openOut(b.dataset.a);
 };
+function reportHtml() {
+  const rows = V.attendance.filter(r => r.date === today && r.status !== 'void');
+  const cnt = a => [a.length, a.filter(r => r.checkOut).length];
+  const mine = rows.filter(r => r.branchId === ctx.branchId), [tin, tout] = cnt(mine);
+  const line = (k, a, b, c, cls = '') => `<div class="rep ${cls}"><span>${esc(k)}</span><b>${a}</b><b>${b}</b><b>${c}</b></div>`;
+  let h = `<button class="acc" data-acc="r"><span>Report for today <small class="muted">${tin} in · ${tout} out</small></span><em class="chev ${accR ? 'up' : ''}"></em></button>`;
+  if (!accR) return h;
+  const bn = V.branches.find(b => b.id === ctx.branchId)?.name || '';
+  h += `<div class="src"><b>${new Date().toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</b><p class="muted" style="margin:2px 0 6px">${esc(bn)}</p>` + line('Service', 'In', 'Out', 'Still in', 'h');
+  V.services.filter(s => svcAt(s, ctx.branchId)).forEach(s => { const [i, o] = cnt(mine.filter(r => r.serviceId === s.id)); h += line(s.name, i, o, i - o); });
+  h += line('Total', tin, tout, tin - tout, 't');
+  if (V.branches.length > 1) {
+    h += `<p style="margin:14px 0 2px"><b>All campuses today</b></p>` + line('Campus', 'In', 'Out', 'Still in', 'h');
+    V.branches.forEach(b => { const [i, o] = cnt(rows.filter(r => r.branchId === b.id)); h += line(b.name, i, o, i - o); });
+  }
+  return h + '</div>';
+}
+$('#report').onclick = e => { if (e.target.closest('[data-acc]')) { accR = !accR; render(); } };
 function coAll() {
   const n = V.attendance.filter(r => r.serviceId === ctx.serviceId && r.branchId === ctx.branchId && r.date === today && r.status !== 'void' && !r.checkOut).length;
   if (n && confirm(`Check out all ${n} teens still in? Do this at the end of service.`)) { store.checkOutAll({ serviceId: ctx.serviceId, branchId: ctx.branchId, date: today }); toast(`${n} teens checked out`); }
@@ -223,10 +280,12 @@ function openOut(aid) {
   const a = V.attendance.find(r => r.id === aid); if (!a) return;
   const name = V.teens.find(t => t.id === a.teenId)?.fullName || 'Unknown';
   sheet(`<h2>${esc(name)}</h2><p class="muted">In since ${hm(a.checkIn)}</p>
+    ${a.guardianCode ? '<button class="btn" id="showcode">Show pickup code</button>' : ''}
     <input id="code" class="codein" inputmode="numeric" maxlength="4" placeholder="Code (optional)" autocomplete="off">
     <input id="note" placeholder="Note (optional)">
     <p class="muted" style="margin:0">Leave the code blank if the guardian does not have it.</p>
     <button class="btn primary" id="go">Check out</button><button class="btn ghost" id="x">Cancel</button>`);
+  const sc = $('#showcode'); if (sc) sc.onclick = () => { sc.outerHTML = `<div class="code" style="font-size:52px;margin:6px 0">${esc(a.guardianCode)}</div>`; };
   const finish = () => { closeSheet(); toast(`${name} checked out`, 'ok', () => store.undoCheckOut(a)); };
   $('#go').onclick = async () => {
     const code = $('#code').value.trim();
@@ -275,7 +334,7 @@ document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
   document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
   const ci = b.dataset.t === 'in';
   const t = b.dataset.t; ['in:#checkin', 'rec:#records', 'dash:#dash', 'set:#set'].forEach(x => { const [k, id] = x.split(':'); $(id).hidden = t !== k; }); $('#soon').hidden = true; $('#add').hidden = !ci || mode !== 'in';
-  $('header b').textContent = b.textContent.slice(1);
+  $('header b').textContent = b.querySelector('span').textContent;
   ({ rec: records, dash, set: settings })[t]?.show();
 });
 

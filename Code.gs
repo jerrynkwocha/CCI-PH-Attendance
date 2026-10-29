@@ -105,7 +105,7 @@ function state_(p, role) {
     rev, role,
     teamCode: role === 'admin' ? pr.getProperty('TEAM_CODE') : null,
     teens: tbl_('Teenagers').all().filter(t => role === 'admin' || t.status !== 'archived').map(t => pubTeen_(t, role)),
-    attendance: tbl_('Attendance').all().filter(r => r.date === p.date && r.status !== 'void').map(r => pubAtt_(r, role)),
+    attendance: tbl_('Attendance').all().filter(r => r.date === p.date && r.status !== 'void').map(strip_), // today's rows include the pickup code so ushers can confirm it
     branches: tbl_('Branches').all().map(strip_),
     services: tbl_('Services').all().map(strip_)
   };

@@ -1,4 +1,5 @@
 // settings.js — Stage 4: branches, services, team access code, Admin PIN, birthdays this week (Admin only).
+const FOOT = '<p class="made">Built with ❤️ by <a href="https://primeflowtechnology.com.ng" target="_blank" rel="noopener">PrimeFlow Technology Limited</a></p>';
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 import { svcBranches } from './store.js';
@@ -35,6 +36,7 @@ export function initSettings({ store, getV, esc, toast, sheet, closeSheet, unloc
         <button class="btn" data-a="s-new">+ Add service</button>
         <h2>Birthdays this week</h2>${bd.map(x => `<div class="stat"><span><b>${esc(x.t.fullName)}</b></span><span class="muted">${x.d.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })} · turns ${x.age}</span></div>`).join('') || '<p class="muted">No birthdays this week.</p>'}`;
     }
+    h += FOOT;
     if (h !== last) { root.innerHTML = h; last = h; }
   }
 
