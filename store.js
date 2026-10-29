@@ -20,6 +20,16 @@ const EMPTY = { teens: [], branches: [], services: [], attendance: [], rev: null
 export const todayStr = (d = new Date()) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
+export const ageOf = t => {
+  const m = String(t.dob || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) { const n = new Date(); let a = n.getFullYear() - +m[1]; if (n.getMonth() + 1 < +m[2] || (n.getMonth() + 1 === +m[2] && n.getDate() < +m[3])) a--; return a; }
+  return t.age && !isNaN(+t.age) ? +t.age : NaN;
+};
+
+export const HOME = 'Home campus'; // label for a teen's default campus (change here to rename everywhere)
+export const svcBranches = s => String(s.branchId || '').replace(/[\[\]]/g, '').split(/[;,]/).map(x => x.trim()).filter(Boolean);
+export const svcAt = (s, branchId) => { const b = svcBranches(s); return !b.length || b.includes(branchId); };
+
 export const createStore = cfg => new AppsScriptStore(cfg.url, cfg);
 
 class AppsScriptStore {

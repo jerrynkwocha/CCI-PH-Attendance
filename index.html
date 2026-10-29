@@ -51,6 +51,8 @@ nav button.on{color:var(--pri)}
 .hb{display:grid;grid-template-columns:84px 1fr 34px;gap:8px;align-items:center;margin:6px 0;font-size:14px}.hb div{background:#eef2ff;border-radius:8px;height:18px}.hb i{display:block;height:100%;background:var(--pri);border-radius:8px}.hb b{text-align:right}
 .vb{display:flex;align-items:flex-end;gap:3px;height:130px;margin:10px 0 4px}.vb div{flex:1;height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center}.vb small{font-size:10px;color:var(--mut)}.vb i{display:block;width:100%;background:var(--pri);border-radius:4px 4px 0 0}
 .axis{display:flex;justify-content:space-between;font-size:12px;color:var(--mut)}.btn.warn{background:#fef3c7;border-color:#f59e0b;color:#92400e}
+.lbl{display:block;text-align:left;margin:0 0 4px 4px;font-size:13px}
+select{text-overflow:ellipsis}#branch,#service{font-size:16px}
 </style></head><body>
 
 <div id="login" class="login" hidden>
@@ -66,7 +68,7 @@ nav button.on{color:var(--pri)}
   <header><b>Check In</b><span id="sync" class="pill saved">● Saved</span></header>
   <div class="wrap">
     <main id="checkin">
-      <div class="two"><select id="branch"></select><select id="service"></select></div>
+      <div><select id="branch"></select><select id="service"></select></div>
       <div class="seg"><button id="t-in" class="on">Check In</button><button id="t-out">Checked In (<span id="cnt">0</span>)</button></div>
       <input id="q" type="search" placeholder="Search name…" autocomplete="off">
       <div id="list"></div>
@@ -86,7 +88,7 @@ nav button.on{color:var(--pri)}
 <div id="toast" class="toast" hidden></div>
 
 <script type="module">
-import { createStore, todayStr } from './store.js';
+import { createStore, todayStr, ageOf, svcAt, HOME } from './store.js';
 import { APPS_SCRIPT_URL } from './config.js';
 import { initRecords } from './records.js';
 import { initDashboard } from './dashboard.js';
@@ -122,7 +124,7 @@ function fill(sel, opts, val) {
   if (el.dataset.h !== h) { el.innerHTML = h; el.dataset.h = h; }
   el.value = val;
 }
-const services = () => V.services.filter(s => !s.branchId || s.branchId === ctx.branchId);
+const services = () => V.services.filter(s => svcAt(s, ctx.branchId));
 function fixCtx() {
   if (!V.branches.length) return;
   if (!V.branches.some(b => b.id === ctx.branchId)) { ctx.branchId = V.branches[0].id; ctx.serviceId = ''; }
@@ -141,15 +143,16 @@ function render() {
   const list = $('#list');
   if (!ctx.serviceId) { list.innerHTML = '<p class="muted">Add a branch and a service in Settings (Admin PIN) to start.</p>'; return; }
   const tm = new Map(V.teens.map(t => [t.id, t]));
-  const att = V.attendance.filter(r => r.serviceId === ctx.serviceId && r.date === today && r.status !== 'void');
-  const open = att.filter(r => !r.checkOut), byTeen = new Map(att.map(r => [r.teenId, r]));
+  const here = V.attendance.filter(r => r.serviceId === ctx.serviceId && r.date === today && r.status !== 'void');
+  const att = here.filter(r => r.branchId === ctx.branchId);
+  const open = att.filter(r => !r.checkOut), byTeen = new Map(here.map(r => [r.teenId, r]));
   const words = q.toLowerCase().split(/\s+/).filter(Boolean), hit = n => words.every(w => n.toLowerCase().includes(w));
   $('#cnt').textContent = open.length;
   if (mode === 'in') {
     const rows = V.teens.filter(t => t.status !== 'archived' && hit(t.fullName)).sort((a, b) => a.fullName.localeCompare(b.fullName)).slice(0, 40);
     list.innerHTML = rows.map(t => {
       const a = byTeen.get(t.id);
-      return `<button class="row ${a ? 'done' : ''}" data-t="${esc(t.id)}" ${a ? 'disabled' : ''}><span><b>${esc(t.fullName)}</b><small>${esc([t.age, t.gender].filter(Boolean).join(' · '))}</small></span><i>${a ? (a.checkOut ? 'Out' : '✓ In') : 'Check in'}</i></button>`;
+      return `<button class="row ${a ? 'done' : ''}" data-t="${esc(t.id)}" ${a ? 'disabled' : ''}><span><b>${esc(t.fullName)}</b><small>${esc([ageOf(t) || '', t.gender].filter(Boolean).join(' · '))}</small></span><i>${a ? (a.branchId !== ctx.branchId ? 'At ' + (V.branches.find(b => b.id === a.branchId)?.name || 'other branch') : a.checkOut ? 'Out' : '✓ In') : 'Check in'}</i></button>`;
     }).join('') || '<p class="muted">No match. Tap “+ New teen”.</p>';
   } else {
     const rows = open.map(a => ({ a, n: tm.get(a.teenId)?.fullName || 'Unknown' })).filter(x => hit(x.n)).sort((x, y) => x.n.localeCompare(y.n));
@@ -165,8 +168,8 @@ $('#list').onclick = e => {
   } else openOut(b.dataset.a);
 };
 function coAll() {
-  const n = V.attendance.filter(r => r.serviceId === ctx.serviceId && r.date === today && r.status !== 'void' && !r.checkOut).length;
-  if (n && confirm(`Check out all ${n} teens still in? Do this at the end of service.`)) { store.checkOutAll({ serviceId: ctx.serviceId, date: today }); toast(`${n} teens checked out`); }
+  const n = V.attendance.filter(r => r.serviceId === ctx.serviceId && r.branchId === ctx.branchId && r.date === today && r.status !== 'void' && !r.checkOut).length;
+  if (n && confirm(`Check out all ${n} teens still in? Do this at the end of service.`)) { store.checkOutAll({ serviceId: ctx.serviceId, branchId: ctx.branchId, date: today }); toast(`${n} teens checked out`); }
 }
 $('#q').oninput = e => { q = e.target.value; render(); };
 const setMode = m => { mode = m; $('#t-in').classList.toggle('on', m === 'in'); $('#t-out').classList.toggle('on', m === 'out'); $('#add').hidden = m !== 'in'; render(); };
@@ -215,10 +218,11 @@ $('#add').onclick = () => {
   sheet(`<h2>New teen</h2>
     <input id="n-name" placeholder="Full name *" autocomplete="off">
     <div class="seg2"><button data-g="Male">Male</button><button data-g="Female">Female</button></div>
-    <input id="n-age" type="number" inputmode="numeric" placeholder="Age *">
-    <input id="n-gp" type="tel" placeholder="Guardian phone *">
+    <div class="two"><div><small class="muted lbl">Age</small><input id="n-age" type="number" inputmode="numeric" placeholder="Age"></div><div><small class="muted lbl">Birthday</small><input id="n-dob" type="date"></div></div>
+    <input id="n-ph" type="tel" placeholder="Teen's phone *">
+    <select id="n-hb"><option value="">${HOME}</option>${V.branches.map(b => `<option value="${esc(b.id)}"${b.id === ctx.branchId ? ' selected' : ''}>${esc(b.name)}</option>`).join('')}</select>
     <details><summary>More details (optional)</summary>
-      <input id="n-gn" placeholder="Guardian name"><input id="n-ph" type="tel" placeholder="Teen's phone"><input id="n-med" placeholder="Allergies / medical notes">
+      <input id="n-gp" type="tel" placeholder="Guardian phone"><input id="n-gn" placeholder="Guardian name"><input id="n-med" placeholder="Allergies / medical notes">
     </details>
     <button class="btn primary" id="save">Save &amp; check in</button><button class="btn ghost" id="x">Cancel</button>`);
   $('#n-name').value = q;
@@ -227,11 +231,11 @@ $('#add').onclick = () => {
   });
   $('#x').onclick = closeSheet;
   $('#save').onclick = () => {
-    const v = id => $(id).value.trim(), fullName = v('#n-name'), age = v('#n-age'), guardianPhone = v('#n-gp');
-    if (!fullName || !g || !age || !guardianPhone) return toast('Name, gender, age and guardian phone are required', 'err');
-    const a = store.addTeen({ fullName, gender: g, age, guardianPhone, guardianName: v('#n-gn'), phone: v('#n-ph'), medicalNotes: v('#n-med'), homeBranchId: ctx.branchId });
+    const v = id => $(id).value.trim(), fullName = v('#n-name'), age = v('#n-age'), dob = v('#n-dob'), phone = v('#n-ph'), guardianPhone = v('#n-gp');
+    if (!fullName || !g || !phone || (!age && !dob)) return toast('Name, gender, teen phone and age or birthday are required', 'err');
+    const a = store.addTeen({ fullName, gender: g, age, dob, phone, guardianPhone, guardianName: v('#n-gn'), medicalNotes: v('#n-med'), homeBranchId: $('#n-hb').value });
     $('#q').value = q = '';
-    checkInTeen(fullName, { teenRefOpId: a.opId }, guardianPhone);
+    checkInTeen(fullName, { teenRefOpId: a.opId }, guardianPhone || phone);
   };
 };
 

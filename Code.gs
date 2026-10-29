@@ -152,7 +152,7 @@ function checkOut_(p) {
 function checkOutAll_(p) {
   return withLock_(() => {
     const A = tbl_('Attendance'), t = time_(p.at); let n = 0;
-    A.all().filter(r => r.serviceId === p.serviceId && r.date === p.date && r.status !== 'void' && !r.checkOut).forEach(r => {
+    A.all().filter(r => r.serviceId === p.serviceId && r.date === p.date && (!p.branchId || r.branchId === p.branchId) && r.status !== 'void' && !r.checkOut).forEach(r => {
       Object.assign(r, { checkOut: t, checkoutNote: 'Bulk check-out', checkedOutBy: p.by || '', codeCheck: 'bulk' });
       A.set(r); n++;
     });
@@ -180,7 +180,8 @@ function addTeen_(p, role) { // quick-add; allowed for the team
     const T = tbl_('Teenagers'), t0 = p.teen || {};
     const hit = p.opId && T.all().find(t => t.opId === p.opId);
     if (hit) return { teen: pubTeen_(hit, role), replayed: true };
-    ['fullName', 'gender', 'age', 'guardianPhone'].forEach(k => { if (!String(t0[k] || '').trim()) throw fail_('missing_field', k + ' is required'); });
+    ['fullName', 'gender', 'phone'].forEach(k => { if (!String(t0[k] || '').trim()) throw fail_('missing_field', k + ' is required'); });
+    if (!String(t0.age || '').trim() && !String(t0.dob || '').trim()) throw fail_('missing_field', 'age or birthday is required');
     const t = Object.assign({ id: newId_('t'), dateAdded: today_(), status: 'active', opId: p.opId }, pick_(t0));
     T.add(t);
     return { teen: pubTeen_(t, role) };

@@ -1,5 +1,5 @@
 // dashboard.js — Stage 4: metrics, charts, absentees (full view for Admin; today's totals for the team).
-import { todayStr } from './store.js';
+import { todayStr, ageOf, svcAt } from './store.js';
 
 const addDays = (d, n) => { const x = new Date(d + 'T00:00:00'); x.setDate(x.getDate() + n); return todayStr(x); };
 const wk = d => { const x = new Date(d + 'T00:00:00'); x.setDate(x.getDate() - (x.getDay() + 6) % 7); return todayStr(x); }; // Monday of that week
@@ -10,14 +10,10 @@ export function initDashboard({ store, getV, esc, toast, unlock }) {
   const f = { b: '', s: '', from: addDays(today, -55), to: today };
   let built = false, all = null, at = 0, loading = false;
   const isAdmin = () => getV().role === 'admin';
-  const ageOf = t => {
-    if (t.age && !isNaN(+t.age)) return +t.age;
-    const x = String(t.dob || '').match(/^(\d{4})/); return x ? new Date().getFullYear() - +x[1] : NaN;
-  };
   const setBody = h => { const el = $('#d-body'); if (el.dataset.h !== h) { el.innerHTML = h; el.dataset.h = h; } };
 
   function build() {
-    $('#dash').innerHTML = `<div id="d-f"><div class="two"><select id="d-b"></select><select id="d-s"></select></div>
+    $('#dash').innerHTML = `<div id="d-f"><div><select id="d-b"></select><select id="d-s"></select></div>
       <div class="two"><input id="d-from" type="date"><input id="d-to" type="date"></div></div><div id="d-body"></div>`;
     $('#d-from').value = f.from; $('#d-to').value = f.to;
     $('#d-b').onchange = e => { f.b = e.target.value; f.s = ''; render(); };
@@ -30,7 +26,7 @@ export function initDashboard({ store, getV, esc, toast, unlock }) {
   function filters() {
     const V = getV(), fill = (id, h, v) => { const el = $(id); if (el.dataset.h !== h) { el.innerHTML = h; el.dataset.h = h; } el.value = v; };
     fill('#d-b', '<option value="">All branches</option>' + V.branches.map(b => `<option value="${esc(b.id)}">${esc(b.name)}</option>`).join(''), f.b);
-    fill('#d-s', '<option value="">All services</option>' + V.services.filter(s => !f.b || !s.branchId || s.branchId === f.b).map(s => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join(''), f.s);
+    fill('#d-s', '<option value="">All services</option>' + V.services.filter(s => !f.b || svcAt(s, f.b)).map(s => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join(''), f.s);
   }
   async function load(force) {
     if (loading || (!force && all && Date.now() - at < 120000)) return;

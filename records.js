@@ -1,5 +1,5 @@
 // records.js — Stage 3: teen list, profile, edit/archive, CSV export, multi-source import.
-import { todayStr } from './store.js';
+import { todayStr, ageOf, svcBranches, HOME } from './store.js';
 
 // Import fields. Order matters for auto-mapping (specific headers before generic ones).
 const TF = [
@@ -7,7 +7,7 @@ const TF = [
   ['guardianName', 'Guardian name', /guardian|parent|next of kin/i],
   ['fullName', 'Full name', /name/i], ['gender', 'Gender', /gender|sex/i], ['age', 'Age', /^age/i],
   ['dob', 'Date of birth', /dob|birth/i], ['phone', 'Teen phone', /phone|mobile|tel|whatsapp|contact/i],
-  ['homeBranch', 'Branch', /branch|campus|location/i], ['medicalNotes', 'Medical notes', /medical|allerg|health/i],
+  ['homeBranch', HOME, /branch|campus|location/i], ['medicalNotes', 'Medical notes', /medical|allerg|health/i],
   ['dateAdded', 'Date joined', /join|added|register|since/i]
 ];
 const AF = [
@@ -64,13 +64,9 @@ export function initRecords({ store, getV, esc, toast, sheet, closeSheet }) {
   const bName = id => getV().branches.find(b => b.id === id)?.name || '';
   const svcName = id => getV().services.find(s => s.id === id)?.name || '';
   const hm = iso => iso ? new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '–';
-  const ageOf = t => {
-    if (t.age && !isNaN(+t.age)) return +t.age;
-    const m = String(t.dob || '').match(/^(\d{4})/); return m ? new Date().getFullYear() - +m[1] : NaN;
-  };
   const filtered = () => {
     const words = f.q.toLowerCase().split(/\s+/).filter(Boolean);
-    return getV().teens.filter(t => (f.arch || t.status !== 'archived') && (!f.b || t.homeBranchId === f.b) && (!f.g || t.gender === f.g)
+    return getV().teens.filter(t => (f.arch || t.status !== 'archived') && (!f.b || (f.b === '__none' ? !t.homeBranchId : t.homeBranchId === f.b)) && (!f.g || t.gender === f.g)
       && words.every(w => t.fullName.toLowerCase().includes(w))
       && (f.min === '' || ageOf(t) >= +f.min) && (f.max === '' || ageOf(t) <= +f.max))
       .sort((a, b) => a.fullName.localeCompare(b.fullName));
@@ -100,7 +96,8 @@ export function initRecords({ store, getV, esc, toast, sheet, closeSheet }) {
       ? `<div class="three"><button class="btn" data-a="add">+ Add</button><button class="btn" data-a="imp">Import</button><button class="btn" data-a="exp">Export</button></div><button class="btn ghost" data-a="arch">${f.arch ? 'Hide' : 'Show'} archived</button>`
       : `<button class="btn ghost" data-a="unlock">Unlock editing (Admin PIN)</button>`;
     const el = $('#r-tools'); if (el.dataset.h !== h) { el.innerHTML = h; el.dataset.h = h; }
-    const bs = '<option value="">All branches</option>' + getV().branches.map(b => `<option value="${esc(b.id)}">${esc(b.name)}</option>`).join('');
+    const act = getV().teens.filter(t => t.status !== 'archived'), cnt = id => act.filter(t => t.homeBranchId === id).length, none = act.filter(t => !t.homeBranchId).length;
+    const bs = `<option value="">All campuses (${act.length})</option>` + getV().branches.map(b => `<option value="${esc(b.id)}">${esc(b.name)} (${cnt(b.id)})</option>`).join('') + (none ? `<option value="__none">No ${HOME.toLowerCase()} (${none})</option>` : '');
     const sel = $('#r-b'); if (sel.dataset.h !== bs) { sel.innerHTML = bs; sel.dataset.h = bs; } sel.value = f.b;
   }
   function list() {
@@ -136,7 +133,7 @@ export function initRecords({ store, getV, esc, toast, sheet, closeSheet }) {
     const row = (k, v) => v ? `<div class="stat"><span class="muted">${k}</span><b>${esc(v)}</b></div>` : '';
     sheet(`<div class="left"><h2>${esc(t.fullName)}${t.status === 'archived' ? ' (archived)' : ''}</h2>
       ${row('Gender', t.gender)}${row('Age', isNaN(age) ? '' : age)}${row('Date of birth', t.dob)}${row('Phone', t.phone)}${row('Guardian', t.guardianName)}
-      ${admin ? row('Guardian phone', t.guardianPhone) + row('Medical notes', t.medicalNotes) : ''}${row('Home branch', bName(t.homeBranchId))}${row('Added', t.dateAdded)}
+      ${admin ? row('Guardian phone', t.guardianPhone) + row('Medical notes', t.medicalNotes) : ''}${row(HOME, bName(t.homeBranchId))}${row('Added', t.dateAdded)}
       <h3>Attendance</h3><div id="p-att" class="muted">Loading…</div>
       ${admin ? `<button class="btn" id="p-edit">Edit</button><button class="btn" id="p-arch">${t.status === 'archived' ? 'Restore' : 'Archive'}</button>` : ''}
       <button class="btn primary" id="p-x">Close</button></div>`);
@@ -160,15 +157,15 @@ export function initRecords({ store, getV, esc, toast, sheet, closeSheet }) {
     const inp = (k, ph, type = 'text') => `<input id="f-${k}" type="${type}" placeholder="${ph}" value="${esc(t[k] || '')}">`;
     sheet(`<div class="left"><h2>${t.id ? 'Edit' : 'Add'} teen</h2>${inp('fullName', 'Full name *')}
       <div class="seg2">${['Male', 'Female'].map(x => `<button data-g="${x}" class="${g === x ? 'on' : ''}">${x}</button>`).join('')}</div>
-      ${inp('age', 'Age', 'number')}${inp('dob', 'Date of birth (YYYY-MM-DD)')}${inp('phone', "Teen's phone", 'tel')}${inp('guardianName', 'Guardian name')}${inp('guardianPhone', 'Guardian phone *', 'tel')}
-      <select id="f-homeBranchId"><option value="">Home branch</option>${getV().branches.map(b => `<option value="${esc(b.id)}"${b.id === t.homeBranchId ? ' selected' : ''}>${esc(b.name)}</option>`).join('')}</select>
+      ${inp('age', 'Age', 'number')}${inp('dob', 'Date of birth (YYYY-MM-DD)')}${inp('phone', "Teen's phone *", 'tel')}${inp('guardianName', 'Guardian name')}${inp('guardianPhone', 'Guardian phone', 'tel')}
+      <select id="f-homeBranchId"><option value="">${HOME}</option>${getV().branches.map(b => `<option value="${esc(b.id)}"${b.id === t.homeBranchId ? ' selected' : ''}>${esc(b.name)}</option>`).join('')}</select>
       ${inp('medicalNotes', 'Allergies / medical notes')}
       <button class="btn primary" id="f-save">Save</button><button class="btn ghost" id="f-x">Cancel</button></div>`);
     document.querySelectorAll('.seg2 button').forEach(b => b.onclick = () => { g = b.dataset.g; document.querySelectorAll('.seg2 button').forEach(x => x.classList.toggle('on', x === b)); });
     $('#f-x').onclick = closeSheet;
     $('#f-save').onclick = () => {
       const v = {}; ['fullName', 'age', 'dob', 'phone', 'guardianName', 'guardianPhone', 'homeBranchId', 'medicalNotes'].forEach(k => v[k] = $('#f-' + k).value.trim());
-      if (!v.fullName || !v.guardianPhone) return toast('Name and guardian phone are required', 'err');
+      if (!v.fullName || (!t.id && !v.phone)) return toast('Name and teen phone are required', 'err');
       save({ ...(t.id ? { id: t.id } : {}), ...v, gender: g });
     };
   }
@@ -176,7 +173,7 @@ export function initRecords({ store, getV, esc, toast, sheet, closeSheet }) {
   /* ---------- export ---------- */
   function exportCsv() {
     const H = ['fullName', 'gender', 'age', 'dob', 'phone', 'guardianName', 'guardianPhone', 'homeBranch', 'medicalNotes', 'dateAdded', 'status'];
-    download(`teens-${todayStr()}.csv`, csv([H, ...filtered().map(t => H.map(k => k === 'homeBranch' ? bName(t.homeBranchId) : t[k]))]));
+    download(`teens-${todayStr()}.csv`, csv([H.map(k => k === 'homeBranch' ? 'homeCampus' : k), ...filtered().map(t => H.map(k => k === 'homeBranch' ? bName(t.homeBranchId) : t[k]))]));
     toast('Exported ' + filtered().length + ' teens');
   }
 
@@ -185,7 +182,7 @@ export function initRecords({ store, getV, esc, toast, sheet, closeSheet }) {
     if (rows.length < 2) return toast(`${name}: no data rows`, 'err');
     const heads = rows[0].map(h => String(h).trim());
     const kind = heads.some(h => /date/i.test(h)) && heads.some(h => /service|check/i.test(h)) ? 'att' : 'teens';
-    src.push({ name, rows: [heads, ...rows.slice(1)], kind, map: autoMap(heads, kind === 'att' ? AF : TF), svc: '' });
+    src.push({ name, rows: [heads, ...rows.slice(1)], kind, map: autoMap(heads, kind === 'att' ? AF : TF), svc: '', hb: '' });
     plan = null;
   }
   const srcCard = (s, i) => {
@@ -193,12 +190,13 @@ export function initRecords({ store, getV, esc, toast, sheet, closeSheet }) {
     return `<div class="src"><div class="stat"><b>${esc(s.name)}</b><button class="x" data-rm="${i}">✕</button></div><small class="muted">${s.rows.length - 1} rows</small>
       <select data-kind="${i}"><option value="teens"${s.kind === 'teens' ? ' selected' : ''}>These are teenagers</option><option value="att"${s.kind === 'att' ? ' selected' : ''}>This is past attendance</option></select>
       ${(s.kind === 'att' ? AF : TF).map(([k, label]) => `<div class="map"><span>${label}</span><select data-map="${i}:${k}"><option value="">— none —</option>${heads(k)}</select></div>`).join('')}
+      ${s.kind === 'teens' ? `<div class="map"><span>If campus is missing</span><select data-hb="${i}"><option value="">— none —</option>${getV().branches.map(v => `<option value="${esc(v.id)}"${s.hb === v.id ? ' selected' : ''}>${esc(v.name)}</option>`).join('')}</select></div>` : ''}
       ${s.kind === 'att' ? `<div class="map"><span>If service is missing</span><select data-svc="${i}"><option value="">— skip —</option>${getV().services.map(v => `<option value="${esc(v.id)}"${s.svc === v.id ? ' selected' : ''}>${esc(v.name)}</option>`).join('')}</select></div>` : ''}</div>`;
   };
   const planHtml = () => {
     const p = plan.stats, line = (k, v) => `<div class="stat"><span>${k}</span><b>${v}</b></div>`;
     return `<div class="src" id="i-plan"><b>Preview</b>${line('New teens', plan.newTeens.length)}${line('Duplicates merged', p.merged)}${line('Already in database (skipped)', p.existing)}
-      ${p.flag ? line('Same name, different phone (kept separate)', p.flag) : ''}${plan.att.length || p.attBad ? line('Attendance records', plan.att.length) : ''}${p.attBad ? line('Attendance skipped (no teen, date or service match)', p.attBad) : ''}
+      ${p.flag ? line('Same name, different phone (kept separate)', p.flag) : ''}${p.noCampus ? line('Campus not recognised (left blank)', p.noCampus) : ''}${plan.att.length || p.attBad ? line('Attendance records', plan.att.length) : ''}${p.attBad ? line('Attendance skipped (no teen, date or service match)', p.attBad) : ''}
       <table class="tbl">${plan.newTeens.slice(0, 6).map(e => `<tr><td>${esc(e.teen.fullName)}</td><td>${esc(e.teen.gender)}</td><td>${esc(e.teen.age)}</td><td>${esc(e.teen.guardianPhone || e.teen.phone)}</td></tr>`).join('')}</table></div>`;
   };
   function drawImport() {
@@ -218,6 +216,7 @@ export function initRecords({ store, getV, esc, toast, sheet, closeSheet }) {
     card.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { src.splice(+b.dataset.rm, 1); plan = null; drawImport(); });
     card.querySelectorAll('[data-kind]').forEach(el => el.onchange = () => { const s = src[+el.dataset.kind]; s.kind = el.value; s.map = autoMap(s.rows[0], s.kind === 'att' ? AF : TF); plan = null; drawImport(); });
     card.querySelectorAll('[data-map]').forEach(el => el.onchange = () => { const [i, k] = el.dataset.map.split(':'); if (el.value === '') delete src[+i].map[k]; else src[+i].map[k] = +el.value; reset(); });
+    card.querySelectorAll('[data-hb]').forEach(el => el.onchange = () => { src[+el.dataset.hb].hb = el.value; reset(); });
     card.querySelectorAll('[data-svc]').forEach(el => el.onchange = () => { src[+el.dataset.svc].svc = el.value; reset(); });
     $('#i-x').onclick = closeSheet;
     $('#i-go').onclick = () => {
@@ -236,15 +235,18 @@ export function initRecords({ store, getV, esc, toast, sheet, closeSheet }) {
     const pool = V.teens.map(t => ({ n: norm(t.fullName), ph: phones(t.phone, t.guardianPhone), id: t.id, old: true, teen: t, dates: [] }));
     // same name + (a shared phone, or a phone missing on either side) = same person
     const find = (n, ph) => pool.find(p => p.n === n && (!p.ph.size || !ph.size || [...ph].some(x => p.ph.has(x))));
-    const st = { merged: 0, existing: 0, flag: 0, attBad: 0 };
+    const st = { merged: 0, existing: 0, flag: 0, attBad: 0, noCampus: 0 };
+    // campus text may be "Akpajo" or "Akpajo campus"; falls back to the campus chosen for that file
+    const hbOf = (s, txt) => V.branches.find(b => { const x = norm(b.name), y = norm(txt); return y && (y === x || y.includes(x) || x.includes(y)); })?.id || s.hb || '';
     for (const s of src.filter(s => s.kind === 'teens')) for (const r of s.rows.slice(1)) {
       const name = cell(r, s, 'fullName'); if (!name) continue;
       const t = {
         fullName: name, gender: gender(cell(r, s, 'gender')), age: (cell(r, s, 'age').match(/\d+/) || [''])[0], dob: pDate(cell(r, s, 'dob')),
         phone: cell(r, s, 'phone'), guardianName: cell(r, s, 'guardianName'), guardianPhone: cell(r, s, 'guardianPhone'), medicalNotes: cell(r, s, 'medicalNotes'),
-        dateAdded: pDate(cell(r, s, 'dateAdded')), homeBranchId: V.branches.find(b => norm(b.name) === norm(cell(r, s, 'homeBranch')))?.id || ''
+        dateAdded: pDate(cell(r, s, 'dateAdded')), homeBranchId: hbOf(s, cell(r, s, 'homeBranch'))
       };
       const n = norm(name), ph = phones(t.phone, t.guardianPhone), hit = find(n, ph);
+      if (cell(r, s, 'homeBranch') && !t.homeBranchId) st.noCampus++;
       if (hit) { if (hit.old) st.existing++; else { st.merged++; Object.keys(t).forEach(k => { if (!hit.teen[k]) hit.teen[k] = t[k]; }); ph.forEach(x => hit.ph.add(x)); } }
       else { if (pool.some(p => p.n === n)) st.flag++; pool.push({ n, ph, teen: t, dates: [] }); }
     }
@@ -271,7 +273,7 @@ export function initRecords({ store, getV, esc, toast, sheet, closeSheet }) {
         const r = await store.read('bulkAdd', { table: 'Teenagers', rows: c.map(e => e.teen) });
         r.ids.forEach((id, j) => { plan.newTeens[off + j].id = id; }); off += c.length;
       }
-      const rows = plan.att.map(a => ({ teenId: a.e.id, branchId: a.sv.branchId || a.e.teen.homeBranchId || getV().branches[0]?.id || '', serviceId: a.sv.id, date: a.date, checkIn: a.checkIn, checkOut: a.checkOut, checkedInBy: 'import', codeCheck: 'import', status: 'in' }));
+      const rows = plan.att.map(a => ({ teenId: a.e.id, branchId: (() => { const sb = svcBranches(a.sv), hb = a.e.teen.homeBranchId; return (hb && (!sb.length || sb.includes(hb)) ? hb : sb[0]) || hb || getV().branches[0]?.id || ''; })(), serviceId: a.sv.id, date: a.date, checkIn: a.checkIn, checkOut: a.checkOut, checkedInBy: 'import', codeCheck: 'import', status: 'in' }));
       for (const c of chunks(rows)) added += (await store.read('bulkAdd', { table: 'Attendance', rows: c })).added;
       att = null; await store.refresh(true); closeSheet();
       toast(`Imported ${plan.newTeens.length} teens, ${added} attendance records`);
