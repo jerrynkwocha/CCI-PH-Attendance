@@ -106,6 +106,11 @@ nav svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2;stro
 .outrow i{color:var(--ok)}
 .made{text-align:center;margin:28px 0 8px;font-size:13px;color:var(--mut)}.made a{color:var(--pri);font-weight:600;text-decoration:none;padding:6px 2px}
 .chip{border:1px solid var(--line);background:#fff;border-radius:99px;min-height:40px;padding:0 16px;font:inherit;font-weight:700;color:var(--pri)}
+/* tighter rows; credit line sits at the very bottom of Settings */
+.row{min-height:58px;padding:8px 14px;margin-bottom:6px;font-size:16px}.row small{font-size:13px}
+body[data-tab]:not([data-tab="in"]){padding-bottom:calc(88px + env(safe-area-inset-bottom))}
+#set{display:flex;flex-direction:column;min-height:calc(100vh - 168px - env(safe-area-inset-top) - env(safe-area-inset-bottom));min-height:calc(100dvh - 168px - env(safe-area-inset-top) - env(safe-area-inset-bottom))}
+.made{margin:auto 0 0;padding-top:28px}
 </style></head><body>
 
 <div id="login" class="login" hidden>
@@ -156,7 +161,7 @@ const hm = iso => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute
 const store = createStore({ url: APPS_SCRIPT_URL, onError: (op, e) => toast(e.message, 'err') });
 let today = todayStr();
 let V = store.view(), mode = 'in', q = '', ctx = JSON.parse(localStorage.getItem('att.ctx') || '{}');
-let accT = null, lastOpenT = true, accR = false, accO = false; // Teenagers list: null = automatic (collapsed above 10)
+let accT = null, lastOpenT = true, accR = false, accO = false, accIn = false; // Teenagers list: null = automatic (collapsed above 10)
 
 /* ---------- small UI helpers ---------- */
 let tt;
@@ -207,13 +212,16 @@ function render() {
   const att = here.filter(r => r.branchId === ctx.branchId);
   const open = att.filter(r => !r.checkOut), byTeen = new Map(here.map(r => [r.teenId, r]));
   const words = q.toLowerCase().split(/\s+/).filter(Boolean), hit = n => words.every(w => n.toLowerCase().includes(w));
-  $('#cnt-in').textContent = att.length; $('#cnt').textContent = att.length - open.length; // Check In = everyone checked in; Check Out = how many have left $('#q').hidden = false; $('#report').innerHTML = V.role === 'admin' ? reportHtml() : ''; // report is for admins only
+  $('#cnt-in').textContent = att.length; $('#cnt').textContent = att.length - open.length; // Check In = everyone checked in; Check Out = how many have left
+  $('#q').hidden = false; $('#report').innerHTML = V.role === 'admin' ? reportHtml() : ''; // report is for admins only
   if (mode === 'in') {
-    const rows = V.teens.filter(t => t.status !== 'archived' && hit(t.fullName)).sort((a, b) => a.fullName.localeCompare(b.fullName)).slice(0, 40);
-    list.innerHTML = rows.map(t => {
+    const found = V.teens.filter(t => t.status !== 'archived' && hit(t.fullName)).sort((a, b) => a.fullName.localeCompare(b.fullName));
+    const searching = words.length > 0, openIn = searching || accIn; // typing a name opens the list by itself
+    const rowsHtml = found.slice(0, 300).map(t => {
       const a = byTeen.get(t.id);
       return `<button class="row ${a ? 'done' : ''}" data-t="${esc(t.id)}" ${a ? 'disabled' : ''}><span><b>${esc(t.fullName)}</b><small>${esc([ageOf(t) || '', t.gender].filter(Boolean).join(' · '))}</small></span><i>${a ? (a.branchId !== ctx.branchId ? 'At ' + (V.branches.find(b => b.id === a.branchId)?.name || 'other branch') : a.checkOut ? 'Out' : '✓ In') : 'Check in'}</i></button>`;
-    }).join('') || '<p class="muted">No match. Tap “+ New teen”.</p>';
+    }).join('');
+    list.innerHTML = `<button class="acc" data-acc="i"><span>${searching ? 'Results' : 'Teenagers'} <small class="muted">${found.length}</small></span><em class="chev ${openIn ? 'up' : ''}"></em></button>` + (openIn ? (rowsHtml || '<p class="muted">No match. Tap “+ New teen”.</p>') : '');
   } else {
     const rows = open.map(a => ({ a, n: tm.get(a.teenId)?.fullName || 'Unknown' })).filter(x => hit(x.n)).sort((x, y) => x.n.localeCompare(y.n));
     const openT = accT === null ? open.length <= 10 : accT; lastOpenT = openT;
@@ -227,6 +235,7 @@ function render() {
 }
 $('#list').onclick = e => {
   const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.acc === 'i') { accIn = !accIn; return render(); }
   if (b.dataset.acc === 'o') { accO = !accO; return render(); }
   if (b.dataset.acc) { accT = !lastOpenT; return render(); }
   if (b.id === 'co-all') return coAll();
@@ -334,7 +343,7 @@ $('#add').onclick = () => {
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
   document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
   const ci = b.dataset.t === 'in';
-  const t = b.dataset.t; ['in:#checkin', 'rec:#records', 'dash:#dash', 'set:#set'].forEach(x => { const [k, id] = x.split(':'); $(id).hidden = t !== k; }); $('#soon').hidden = true; $('#add').hidden = !ci || mode !== 'in';
+  const t = b.dataset.t; document.body.dataset.tab = t; ['in:#checkin', 'rec:#records', 'dash:#dash', 'set:#set'].forEach(x => { const [k, id] = x.split(':'); $(id).hidden = t !== k; }); $('#soon').hidden = true; $('#add').hidden = !ci || mode !== 'in';
   $('header b').textContent = b.querySelector('span').textContent;
   ({ rec: records, dash, set: settings })[t]?.show();
 });
