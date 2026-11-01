@@ -105,6 +105,7 @@ nav svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2;stro
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 .outrow i{color:var(--ok)}
 .made{text-align:center;margin:28px 0 8px;font-size:13px;color:var(--mut)}.made a{color:var(--pri);font-weight:600;text-decoration:none;padding:6px 2px}
+.chip{border:1px solid var(--line);background:#fff;border-radius:99px;min-height:40px;padding:0 16px;font:inherit;font-weight:700;color:var(--pri)}
 </style></head><body>
 
 <div id="login" class="login" hidden>
@@ -265,7 +266,7 @@ function checkInTeen(name, ref, phone) {
   const r = store.checkIn({ branchId: ctx.branchId, serviceId: ctx.serviceId, date: today, ...ref });
   const svc = V.services.find(s => s.id === ctx.serviceId)?.name || 'service';
   const msg = `${name} is checked in at ${svc}. Pickup code: ${r.guardianCode}`;
-  const d = phone ? String(phone).replace(/\D/g, '').replace(/^0/, '234') : '';
+  const d = (() => { const raw = String(phone || '').trim(); let x = raw.replace(/\D/g, ''); if (!x) return ''; if (raw.startsWith('+') && !x.startsWith('234')) return x; if (x.startsWith('234')) x = x.slice(3); return '234' + x.replace(/^0/, ''); })();
   sheet(`<div class="tick">✓</div><h2>${esc(name)}</h2><p class="muted">Checked in at ${hm(new Date().toISOString())} · give this code to the guardian</p>
     <div class="code">${r.guardianCode}</div>
     <a class="btn wa" target="_blank" rel="noopener" href="https://wa.me/${d}?text=${encodeURIComponent(msg)}">Share via WhatsApp</a>

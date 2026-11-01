@@ -41,12 +41,16 @@ const download = (name, text) => {
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 };
 const ymd = (y, m, d) => `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-function pDate(s) { // yyyy-mm-dd, or day-first dd/mm/yyyy
+const okDate = (y, m, d) => { const t = new Date(y, m - 1, d); return t.getFullYear() === y && t.getMonth() === m - 1 && t.getDate() === d ? ymd(y, m, d) : ''; };
+function pDate(s, mdy = false) { // yyyy-mm-dd, or dd/mm/yyyy (mm/dd/yyyy when mdy); impossible dates come back blank
   s = String(s || '').trim(); let m;
-  if ((m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/))) return ymd(+m[1], +m[2], +m[3]);
-  if ((m = s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})/))) return ymd(+m[3] < 100 ? 2000 + +m[3] : +m[3], +m[2], +m[1]);
+  if ((m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/))) return okDate(+m[1], +m[2], +m[3]);
+  if ((m = s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})/))) return okDate(+m[3] < 100 ? 2000 + +m[3] : +m[3], mdy ? +m[1] : +m[2], mdy ? +m[2] : +m[1]);
   const d = new Date(s); return s && !isNaN(d) ? todayStr(d) : '';
 }
+// Nigerian mobiles are saved as 0XXXXXXXXXX (handles +234, 234, and a dropped leading zero); anything else is kept as typed
+const fixPhone = v => { const raw = String(v || '').trim(); let d = raw.replace(/\D/g, ''); if (d.startsWith('234')) d = d.slice(3); if (d.length === 10 && /^[789]/.test(d)) d = '0' + d; return /^0[789]\d{9}$/.test(d) ? d : raw; };
+const phoneBad = v => { const raw = String(v || '').trim(); return !!raw && !/^0[789]\d{9}$/.test(fixPhone(raw)); };
 function pTime(date, s) {
   const m = String(s || '').match(/(\d{1,2})[:.](\d{2})\s*(am|pm)?/i); if (!m) return '';
   let h = +m[1]; const ap = (m[3] || '').toLowerCase();
@@ -183,7 +187,7 @@ export function initRecords({ store, getV, esc, toast, sheet, closeSheet }) {
     if (rows.length < 2) return toast(`${name}: no data rows`, 'err');
     const heads = rows[0].map(h => String(h).trim());
     const kind = heads.some(h => /date/i.test(h)) && heads.some(h => /service|check/i.test(h)) ? 'att' : 'teens';
-    src.push({ name, rows: [heads, ...rows.slice(1)], kind, map: autoMap(heads, kind === 'att' ? AF : TF), svc: '', hb: '' });
+    src.push({ name, rows: [heads, ...rows.slice(1)], kind, map: autoMap(heads, kind === 'att' ? AF : TF), svc: '', hb: '', dord: 'auto' });
     plan = null;
   }
   const srcCard = (s, i) => {
@@ -191,13 +195,14 @@ export function initRecords({ store, getV, esc, toast, sheet, closeSheet }) {
     return `<div class="src"><div class="stat"><b>${esc(s.name)}</b><button class="x" data-rm="${i}">✕</button></div><small class="muted">${s.rows.length - 1} rows</small>
       <select data-kind="${i}"><option value="teens"${s.kind === 'teens' ? ' selected' : ''}>These are teenagers</option><option value="att"${s.kind === 'att' ? ' selected' : ''}>This is past attendance</option></select>
       ${(s.kind === 'att' ? AF : TF).map(([k, label]) => `<div class="map"><span>${label}</span><select data-map="${i}:${k}"><option value="">— none —</option>${heads(k)}</select></div>`).join('')}
+      <div class="map"><span>Dates are written as</span><select data-dord="${i}"><option value="auto"${s.dord === 'auto' ? ' selected' : ''}>Auto-detect</option><option value="dmy"${s.dord === 'dmy' ? ' selected' : ''}>Day/Month/Year</option><option value="mdy"${s.dord === 'mdy' ? ' selected' : ''}>Month/Day/Year</option></select></div>
       ${s.kind === 'teens' ? `<div class="map"><span>If campus is missing</span><select data-hb="${i}"><option value="">— none —</option>${getV().branches.map(v => `<option value="${esc(v.id)}"${s.hb === v.id ? ' selected' : ''}>${esc(v.name)}</option>`).join('')}</select></div>` : ''}
       ${s.kind === 'att' ? `<div class="map"><span>If service is missing</span><select data-svc="${i}"><option value="">— skip —</option>${getV().services.map(v => `<option value="${esc(v.id)}"${s.svc === v.id ? ' selected' : ''}>${esc(v.name)}</option>`).join('')}</select></div>` : ''}</div>`;
   };
   const planHtml = () => {
     const p = plan.stats, line = (k, v) => `<div class="stat"><span>${k}</span><b>${v}</b></div>`;
     return `<div class="src" id="i-plan"><b>Preview</b>${line('New teens', plan.newTeens.length)}${line('Duplicates merged', p.merged)}${line('Already in database (skipped)', p.existing)}
-      ${p.flag ? line('Same name, different phone (kept separate)', p.flag) : ''}${p.noCampus ? line('Campus not recognised (left blank)', p.noCampus) : ''}${plan.att.length || p.attBad ? line('Attendance records', plan.att.length) : ''}${p.attBad ? line('Attendance skipped (no teen, date or service match)', p.attBad) : ''}
+      ${p.flag ? line('Same name, different phone (kept separate)', p.flag) : ''}${p.noCampus ? line('Campus not recognised (left blank)', p.noCampus) : ''}${p.badDate ? line('Dates that could not be read (left blank)', p.badDate) : ''}${p.badPhone ? line('Phone numbers that look wrong (kept as typed)', p.badPhone) : ''}${line('Dates read as', [...new Set(src.filter(s => s.map.dob != null || s.map.dateAdded != null || s.map.date != null).map(s => s._mdy ? 'month/day/year' : 'day/month/year'))].join(' & ') || '–')}${plan.att.length || p.attBad ? line('Attendance records', plan.att.length) : ''}${p.attBad ? line('Attendance skipped (no teen, date or service match)', p.attBad) : ''}
       <table class="tbl">${plan.newTeens.slice(0, 6).map(e => `<tr><td>${esc(e.teen.fullName)}</td><td>${esc(e.teen.gender)}</td><td>${esc(e.teen.age)}</td><td>${esc(e.teen.guardianPhone || e.teen.phone)}</td></tr>`).join('')}</table></div>`;
   };
   function drawImport() {
@@ -217,6 +222,7 @@ export function initRecords({ store, getV, esc, toast, sheet, closeSheet }) {
     card.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { src.splice(+b.dataset.rm, 1); plan = null; drawImport(); });
     card.querySelectorAll('[data-kind]').forEach(el => el.onchange = () => { const s = src[+el.dataset.kind]; s.kind = el.value; s.map = autoMap(s.rows[0], s.kind === 'att' ? AF : TF); plan = null; drawImport(); });
     card.querySelectorAll('[data-map]').forEach(el => el.onchange = () => { const [i, k] = el.dataset.map.split(':'); if (el.value === '') delete src[+i].map[k]; else src[+i].map[k] = +el.value; reset(); });
+    card.querySelectorAll('[data-dord]').forEach(el => el.onchange = () => { src[+el.dataset.dord].dord = el.value; reset(); });
     card.querySelectorAll('[data-hb]').forEach(el => el.onchange = () => { src[+el.dataset.hb].hb = el.value; reset(); });
     card.querySelectorAll('[data-svc]').forEach(el => el.onchange = () => { src[+el.dataset.svc].svc = el.value; reset(); });
     $('#i-x').onclick = closeSheet;
@@ -236,26 +242,31 @@ export function initRecords({ store, getV, esc, toast, sheet, closeSheet }) {
     const pool = V.teens.map(t => ({ n: norm(t.fullName), ph: phones(t.phone, t.guardianPhone), id: t.id, old: true, teen: t, dates: [] }));
     // same name + (a shared phone, or a phone missing on either side) = same person
     const find = (n, ph) => pool.find(p => p.n === n && (!p.ph.size || !ph.size || [...ph].some(x => p.ph.has(x))));
-    const st = { merged: 0, existing: 0, flag: 0, attBad: 0, noCampus: 0 };
+    const st = { merged: 0, existing: 0, flag: 0, attBad: 0, noCampus: 0, badDate: 0, badPhone: 0 };
     // campus text may be "Akpajo" or "Akpajo campus"; falls back to the campus chosen for that file
     const hbOf = (s, txt) => V.branches.find(b => { const x = norm(b.name), y = norm(txt); return y && (y === x || y.includes(x) || x.includes(y)); })?.id || s.hb || '';
     const yn = v => /^(y|yes|true|1)$/i.test(v) ? 'yes' : /^(n|no|false|0)$/i.test(v) ? 'no' : '';
+    // Google Sheets may show 6/15/2011 (month first) or 15/06/2011 (day first): look for a value that can only be one of them
+    const guess = s => { let dm = 0, md = 0; s.rows.slice(1).forEach(r => ['dob', 'dateAdded', 'date'].forEach(k => { const m = String(r[s.map[k]] ?? '').match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-]\d{2,4}/); if (m) { if (+m[1] > 12) dm++; if (+m[2] > 12) md++; } })); return md > 0 && dm === 0; };
+    src.forEach(s => { s._mdy = s.dord === 'mdy' || (s.dord !== 'dmy' && guess(s)); });
+    const pd = (s, v) => { const o = pDate(v, s._mdy); if (v && !o) st.badDate++; return o; };
     for (const s of src.filter(s => s.kind === 'teens')) for (const r of s.rows.slice(1)) {
       const name = cell(r, s, 'fullName'); if (!name) continue;
       const t = {
-        fullName: name, gender: gender(cell(r, s, 'gender')), age: (cell(r, s, 'age').match(/\d+/) || [''])[0], dob: pDate(cell(r, s, 'dob')),
-        phone: cell(r, s, 'phone'), guardianName: cell(r, s, 'guardianName'), guardianPhone: cell(r, s, 'guardianPhone'), medicalNotes: cell(r, s, 'medicalNotes'),
-        dateAdded: pDate(cell(r, s, 'dateAdded')), homeBranchId: hbOf(s, cell(r, s, 'homeBranch')), firstTimer: yn(cell(r, s, 'firstTimer'))
+        fullName: name, gender: gender(cell(r, s, 'gender')), age: (cell(r, s, 'age').match(/\d+/) || [''])[0], dob: pd(s, cell(r, s, 'dob')),
+        phone: fixPhone(cell(r, s, 'phone')), guardianName: cell(r, s, 'guardianName'), guardianPhone: fixPhone(cell(r, s, 'guardianPhone')), medicalNotes: cell(r, s, 'medicalNotes'),
+        dateAdded: pd(s, cell(r, s, 'dateAdded')), homeBranchId: hbOf(s, cell(r, s, 'homeBranch')), firstTimer: yn(cell(r, s, 'firstTimer'))
       };
       const n = norm(name), ph = phones(t.phone, t.guardianPhone), hit = find(n, ph);
       if (cell(r, s, 'homeBranch') && !t.homeBranchId) st.noCampus++;
+      if (phoneBad(t.phone)) st.badPhone++; if (phoneBad(t.guardianPhone)) st.badPhone++;
       if (hit) { if (hit.old) st.existing++; else { st.merged++; Object.keys(t).forEach(k => { if (!hit.teen[k]) hit.teen[k] = t[k]; }); ph.forEach(x => hit.ph.add(x)); } }
       else { if (pool.some(p => p.n === n)) st.flag++; pool.push({ n, ph, teen: t, dates: [] }); }
     }
     const att = [], seen = new Set(), svcBy = new Map(V.services.map(v => [norm(v.name), v]));
     for (const s of src.filter(s => s.kind === 'att')) for (const r of s.rows.slice(1)) {
       const name = cell(r, s, 'name'); if (!name) continue;
-      const e = find(norm(name), phones(cell(r, s, 'phone'))), date = pDate(cell(r, s, 'date'));
+      const e = find(norm(name), phones(cell(r, s, 'phone'))), date = pd(s, cell(r, s, 'date'));
       const sv = svcBy.get(norm(cell(r, s, 'service'))) || V.services.find(x => x.id === s.svc);
       if (!e || !date || !sv) { st.attBad++; continue; }
       const k = `${pool.indexOf(e)}|${sv.id}|${date}`; if (seen.has(k)) continue; seen.add(k);
