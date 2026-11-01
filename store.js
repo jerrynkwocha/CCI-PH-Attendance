@@ -30,6 +30,9 @@ export const HOME = 'Home campus'; // label for a teen's default campus (change 
 export const svcBranches = s => String(s.branchId || '').replace(/[\[\]]/g, '').split(/[;,]/).map(x => x.trim()).filter(Boolean);
 export const svcAt = (s, branchId) => { const b = svcBranches(s); return !b.length || b.includes(branchId); };
 
+// check-outs queued by older versions used `code` for the guardian's pickup code; rename it so it can't be mistaken for the access code
+const legacy = p => { if (!('code' in p)) return p; const { code, ...rest } = p; return { ...rest, pickupCode: rest.pickupCode ?? code }; };
+
 export const createStore = cfg => new AppsScriptStore(cfg.url, cfg);
 
 class AppsScriptStore {
@@ -50,7 +53,7 @@ class AppsScriptStore {
     let res;
     try {
       // text/plain avoids a CORS preflight, which Apps Script cannot answer
-      res = await fetch(this.url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ ...this.auth, ...body }) });
+      res = await fetch(this.url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ ...body, ...this.auth }) });
       res = await res.json();
     } catch { this.netFail = true; throw Object.assign(new Error('Network error'), { code: 'network' }); }
     this.netFail = false;
@@ -106,7 +109,7 @@ class AppsScriptStore {
     while (this.queue.length) {
       const op = this.queue[0], w = this.waiters.get(op.opId);
       try {
-        const res = await this._call({ action: op.action, opId: op.opId, at: op.at, by: this.auth.usher || '', ...op.params });
+        const res = await this._call({ action: op.action, opId: op.opId, at: op.at, by: this.auth.usher || '', ...legacy(op.params) });
         this._apply(op, res); this.queue.shift(); save(K.queue, this.queue); w?.ok(res); this.waiters.delete(op.opId);
       } catch (e) {
         if (e.code === 'unauthorized') { this.locked = true; break; }   // keep ops; resume after re-login
@@ -130,7 +133,7 @@ class AppsScriptStore {
   }
 
   checkIn(p) { return this.dispatch('checkIn', p); }
-  checkOut(row, o = {}) { return this.dispatch('checkOut', { ...this._ref(row), note: o.note || '', code: o.code || '', skipCode: !!o.skipCode }); }
+  checkOut(row, o = {}) { return this.dispatch('checkOut', { ...this._ref(row), note: o.note || '', pickupCode: o.code || '', skipCode: !!o.skipCode }); }
   checkOutAll(p) { return this.dispatch('checkOutAll', p); }
   undoCheckIn(row) { return this.dispatch('undoCheckIn', this._ref(row)); }
   undoCheckOut(row) { return this.dispatch('undoCheckOut', this._ref(row)); }

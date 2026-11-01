@@ -143,7 +143,7 @@ function checkOut_(p) {
     const A = tbl_('Attendance'), r = find_(A.all(), p);
     if (r.status === 'void') throw fail_('voided', 'This check-in was undone');
     if (r.checkOut) return { record: pubAtt_(r, 'admin'), replayed: true };
-    if (!p.skipCode && r.guardianCode && String(p.code || '') !== r.guardianCode) throw fail_('bad_code', 'Code does not match');
+    if (!p.skipCode && r.guardianCode && String(p.pickupCode || '') !== r.guardianCode) throw fail_('bad_code', 'Code does not match');
     Object.assign(r, { checkOut: time_(p.at), checkoutNote: p.note || '', checkedOutBy: p.by || '', codeCheck: p.skipCode ? 'skipped' : 'verified' });
     A.set(r);
     return { record: pubAtt_(r, 'admin') };
