@@ -111,15 +111,18 @@ nav svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2;stro
 body[data-tab]:not([data-tab="in"]){padding-bottom:calc(88px + env(safe-area-inset-bottom))}
 #set{display:flex;flex-direction:column;min-height:calc(100vh - 168px - env(safe-area-inset-top) - env(safe-area-inset-bottom));min-height:calc(100dvh - 168px - env(safe-area-inset-top) - env(safe-area-inset-bottom))}
 .made{margin:auto 0 0;padding-top:28px}
+.pw{position:relative}.pw input{padding-right:52px}
+.eye{position:absolute;right:2px;top:0;width:50px;height:52px;border:0;background:none;color:var(--mut);display:grid;place-items:center}
+.eye svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 </style></head><body>
 
 <div id="login" class="login" hidden>
   <img src="logo.png" alt="Celebteens" width="96" height="96">
   <h1>Celebteens PH CheckIn App</h1>
   <p class="muted" id="lmsg">Enter the team access code.</p>
-  <input id="l-code" type="password" placeholder="Team access code" autocomplete="off">
+  <div class="pw"><input id="l-code" type="password" placeholder="Team access code" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false"><button type="button" class="eye" data-eye="l-code" aria-label="Show code"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
   <input id="l-name" placeholder="Your name">
-  <input id="l-pin" type="password" inputmode="numeric" placeholder="Admin PIN (admins only)">
+  <div class="pw"><input id="l-pin" type="password" inputmode="numeric" placeholder="Admin PIN (admins only)" autocomplete="off" autocorrect="off"><button type="button" class="eye" data-eye="l-pin" aria-label="Show PIN"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
   <button class="btn primary" id="l-go">Continue</button>
 </div>
 
@@ -364,6 +367,11 @@ $('#l-go').onclick = async () => {
   catch (e) { $('#lmsg').textContent = e.message; }
   b.disabled = false;
 };
+const EYE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>', EYE_OFF = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+document.querySelectorAll('.eye').forEach(b => b.onclick = () => { // show / hide a code while typing it
+  const i = $('#' + b.dataset.eye), show = i.type === 'password';
+  i.type = show ? 'text' : 'password'; b.innerHTML = show ? EYE_OFF : EYE; b.setAttribute('aria-label', show ? 'Hide' : 'Show');
+});
 store.subscribe((v, s) => {
   V = v; pill(s);
   if (store.locked && $('#login').hidden) showLogin('Access code changed. Enter the new one.');
