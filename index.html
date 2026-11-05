@@ -114,6 +114,14 @@ body[data-tab]:not([data-tab="in"]){padding-bottom:calc(88px + env(safe-area-ins
 .pw{position:relative}.pw input{padding-right:52px}
 .eye{position:absolute;right:2px;top:0;width:50px;height:52px;border:0;background:none;color:var(--mut);display:grid;place-items:center}
 .eye svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.row small{font-size:12px}
+.bar{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:4px 0 14px}.bar.one{grid-template-columns:1fr}
+.bar .btn{margin-top:0;min-height:52px;font-size:16px}.bar .btn:disabled{opacity:.45}
+.bar.sticky{position:sticky;top:calc(60px + env(safe-area-inset-top));z-index:4;background:var(--bg);padding:8px 0;margin:0 0 6px}
+.selrow{display:flex;justify-content:space-between;align-items:center;margin:0 2px 8px}
+.ck{display:inline-block;width:26px;height:26px;border-radius:50%;border:2px solid var(--line);vertical-align:middle;position:relative}
+.ck.on{background:var(--pri);border-color:var(--pri)}.ck.on::after{content:'';position:absolute;left:8px;top:3px;width:6px;height:12px;border:solid #fff;border-width:0 3px 3px 0;transform:rotate(45deg)}
+.btn.danger{color:var(--pri);border-color:var(--ring)}
 </style></head><body>
 
 <div id="login" class="login" hidden>
@@ -164,7 +172,9 @@ const hm = iso => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute
 const store = createStore({ url: APPS_SCRIPT_URL, onError: (op, e) => toast(e.message, 'err') });
 let today = todayStr();
 let V = store.view(), mode = 'in', q = '', ctx = JSON.parse(localStorage.getItem('att.ctx') || '{}');
-let accT = null, lastOpenT = true, accR = false, accO = false, accIn = false; // Teenagers list: null = automatic (collapsed above 10)
+let accT = null, lastOpenT = true, accR = false, accO = false, accIn = false, accE = true;
+const sel = { in: null, out: null }; // "Select several": null = off, a Set while on
+let recent = JSON.parse(localStorage.getItem('att.recent') || '{"rows":[],"day":"","at":0}'); // Teenagers list: null = automatic (collapsed above 10)
 
 /* ---------- small UI helpers ---------- */
 let tt;
@@ -199,13 +209,13 @@ function fixCtx() {
   fill('#branch', V.branches.map(b => [b.id, b.name]), ctx.branchId);
   fill('#service', sv.map(s => [s.id, `${s.name} · ${s.day} ${s.time}`]), ctx.serviceId);
 }
-$('#branch').onchange = e => { accT = null; ctx.branchId = e.target.value; ctx.serviceId = ''; render(); };
-$('#service').onchange = e => { accT = null; ctx.serviceId = e.target.value; render(); };
+$('#branch').onchange = e => { accT = null; sel.in = sel.out = null; ctx.branchId = e.target.value; ctx.serviceId = ''; render(); };
+$('#service').onchange = e => { accT = null; sel.in = sel.out = null; ctx.serviceId = e.target.value; render(); };
 
 /* ---------- list rendering ---------- */
 function render() {
   const d = todayStr();
-  if (d !== today) { today = d; store.start(today); } // app left open overnight: move to the new day
+  if (d !== today) { today = d; store.start(today); loadRecent(true); } // app left open overnight: move to the new day
   $('#today').textContent = new Date().toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   fixCtx();
   const list = $('#list');
@@ -217,36 +227,110 @@ function render() {
   const words = q.toLowerCase().split(/\s+/).filter(Boolean), hit = n => words.every(w => n.toLowerCase().includes(w));
   $('#cnt-in').textContent = att.length; $('#cnt').textContent = att.length - open.length; // Check In = everyone checked in; Check Out = how many have left
   $('#q').hidden = false; $('#report').innerHTML = V.role === 'admin' ? reportHtml() : ''; // report is for admins only
+  const campus = id => V.branches.find(b => b.id === id)?.name || '';
+  const bar = (cancel, go, label, k) => `<div class="bar sticky"><button class="btn" data-do="${cancel}">Cancel</button><button class="btn primary" data-do="${go}" ${k ? '' : 'disabled'}>${label} (${k})</button></div>`;
+  const selrow = (k, all) => `<div class="selrow"><span class="muted">${k} selected</span><button class="chip" data-do="${all}">Select all</button></div>`;
   if (mode === 'in') {
+    const selOn = sel.in !== null, k = selOn ? sel.in.size : 0;
+    const row = t => {
+      const a = byTeen.get(t.id), sub = esc([ageOf(t) || '', t.gender, campus(t.homeBranchId)].filter(Boolean).join(' · '));
+      const lab = a ? (a.branchId !== ctx.branchId ? 'At ' + (campus(a.branchId) || 'other branch') : a.checkOut ? 'Out' : '✓ In')
+        : selOn ? `<span class="ck ${sel.in.has(t.id) ? 'on' : ''}"></span>` : 'Check in';
+      return `<button class="row ${a ? 'done' : ''}" data-t="${esc(t.id)}" ${a ? 'disabled' : ''}><span><b>${esc(t.fullName)}</b><small>${sub}</small></span><i>${lab}</i></button>`;
+    };
     const found = V.teens.filter(t => t.status !== 'archived' && hit(t.fullName)).sort((a, b) => a.fullName.localeCompare(b.fullName));
-    const searching = words.length > 0, openIn = searching || accIn; // typing a name opens the list by itself
-    const rowsHtml = found.slice(0, 300).map(t => {
-      const a = byTeen.get(t.id);
-      return `<button class="row ${a ? 'done' : ''}" data-t="${esc(t.id)}" ${a ? 'disabled' : ''}><span><b>${esc(t.fullName)}</b><small>${esc([ageOf(t) || '', t.gender].filter(Boolean).join(' · '))}</small></span><i>${a ? (a.branchId !== ctx.branchId ? 'At ' + (V.branches.find(b => b.id === a.branchId)?.name || 'other branch') : a.checkOut ? 'Out' : '✓ In') : 'Check in'}</i></button>`;
-    }).join('');
-    list.innerHTML = `<button class="acc" data-acc="i"><span>${searching ? 'Results' : 'Teenagers'} <small class="muted">${found.length}</small></span><em class="chev ${openIn ? 'up' : ''}"></em></button>` + (openIn ? (rowsHtml || '<p class="muted">No match. Tap “+ New teen”.</p>') : '');
+    let html = selOn ? bar('icancel', 'igo', 'Check in selected', k) + selrow(k, 'isall') : '';
+    if (words.length) { // typing a name shows only the matches
+      html += `<button class="acc" data-acc="i"><span>Results <small class="muted">${found.length}</small></span><em class="chev up"></em></button>` + (found.slice(0, 300).map(row).join('') || '<p class="muted">No match. Tap “+ New teen”.</p>');
+    } else {
+      const exp = expectedTeens();
+      if (exp.length) {
+        html += `<button class="acc" data-acc="e"><span>Expected today <small class="muted">${exp.length}</small></span><em class="chev ${accE ? 'up' : ''}"></em></button>`;
+        if (accE) html += (selOn ? '' : '<div class="bar one"><button class="btn" data-do="isel">Select several</button></div>') + exp.map(row).join('');
+      }
+      html += `<button class="acc" data-acc="i" style="margin-top:10px"><span>All teenagers <small class="muted">${found.length}</small></span><em class="chev ${accIn ? 'up' : ''}"></em></button>` + (accIn ? found.slice(0, 300).map(row).join('') : '');
+    }
+    list.innerHTML = html;
   } else {
+    const selOn = sel.out !== null, key = r => r.opId || r.id;
+    if (selOn) { const live = new Set(open.map(key)); [...sel.out].forEach(x => { if (!live.has(x)) sel.out.delete(x); }); }
+    const k = selOn ? sel.out.size : 0;
     const rows = open.map(a => ({ a, n: tm.get(a.teenId)?.fullName || 'Unknown' })).filter(x => hit(x.n)).sort((x, y) => x.n.localeCompare(y.n));
-    const openT = accT === null ? open.length <= 10 : accT; lastOpenT = openT;
+    const openT = selOn || (accT === null ? open.length <= 10 : accT); lastOpenT = openT;
     const outRows = att.filter(r => r.checkOut).map(a => ({ a, n: tm.get(a.teenId)?.fullName || 'Unknown' })).filter(x => hit(x.n)).sort((x, y) => y.a.checkOut.localeCompare(x.a.checkOut));
     const outHtml = `<button class="acc" data-acc="o" style="margin-top:10px"><span>Checked out <small class="muted">${att.length - open.length}</small></span><em class="chev ${accO ? 'up' : ''}"></em></button>` +
       (accO ? outRows.map(({ a, n }) => `<div class="row outrow"><span><b>${esc(n)}</b><small>In ${hm(a.checkIn)} · Out ${hm(a.checkOut)}${a.pending ? ' · syncing' : ''}</small></span><i>✓ Out</i></div>`).join('') || '<p class="muted">Nobody checked out yet.</p>' : '');
-    const body = (open.length ? `<button class="btn warn" id="co-all">End of service: check out all (${open.length})</button>` : '') + rows.map(({ a, n }) => `<button class="row" data-a="${esc(a.id)}"><span><b>${esc(n)}</b><small>In ${hm(a.checkIn)}${a.pending ? ' · syncing' : ''}</small></span><i>Check out</i></button>`).join('') || '<p class="muted">Nobody checked in yet.</p>';
-    list.innerHTML = `<button class="acc" data-acc="t"><span>Teenagers <small class="muted">${open.length} still in</small></span><em class="chev ${openT ? 'up' : ''}"></em></button>` + (openT ? body : '') + outHtml;
+    const rowHtml = ({ a, n }) => `<button class="row" data-a="${esc(a.id)}"><span><b>${esc(n)}</b><small>In ${hm(a.checkIn)}${a.pending ? ' · syncing' : ''}</small></span><i>${selOn ? `<span class="ck ${sel.out.has(key(a)) ? 'on' : ''}"></span>` : 'Check out'}</i></button>`;
+    const top = open.length && !selOn ? `<div class="bar"><button class="btn" data-do="osel">Select several</button><button class="btn warn" data-do="ocoall">Check out all (${open.length})</button></div>` : '';
+    const body = top + (rows.map(rowHtml).join('') || '<p class="muted">Nobody checked in yet.</p>');
+    list.innerHTML = (selOn ? bar('ocancel', 'ogo', 'Check out selected', k) + selrow(k, 'osall') : '') +
+      `<button class="acc" data-acc="t"><span>Teenagers <small class="muted">${open.length} still in</small></span><em class="chev ${openT ? 'up' : ''}"></em></button>` + (openT ? body : '') + outHtml;
     $('#q').hidden = !openT;
   }
 }
+// "Expected today": teens who came to this campus and service in the last 4 weeks and are not in yet
+function expectedTeens() {
+  const inToday = new Set(V.attendance.filter(r => r.serviceId === ctx.serviceId && r.date === today && r.status !== 'void').map(r => r.teenId));
+  const ids = new Set(recent.rows.filter(r => r.date < today && r.branchId === ctx.branchId && r.serviceId === ctx.serviceId).map(r => r.teenId));
+  return V.teens.filter(t => ids.has(t.id) && t.status !== 'archived' && !inToday.has(t.id)).sort((a, b) => a.fullName.localeCompare(b.fullName));
+}
+async function loadRecent(force) { // last 4 weeks of attendance; kept on the phone so the list also works offline
+  if (!force && recent.day === today && Date.now() - recent.at < 600000) return;
+  if (!navigator.onLine || (!store.auth.code && !store.auth.pin)) return;
+  try {
+    const d = await store.read('attendanceRange', { from: todayStr(new Date(Date.now() - 28 * 864e5)), to: today, slim: true });
+    recent = { rows: d.attendance, day: today, at: Date.now() };
+    try { localStorage.setItem('att.recent', JSON.stringify(recent)); } catch {}
+    render();
+  } catch {}
+}
+setInterval(() => { if (!document.hidden) loadRecent(); }, 120000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) loadRecent(); });
+
 $('#list').onclick = e => {
-  const b = e.target.closest('button'); if (!b) return;
-  if (b.dataset.acc === 'i') { accIn = !accIn; return render(); }
-  if (b.dataset.acc === 'o') { accO = !accO; return render(); }
-  if (b.dataset.acc) { accT = !lastOpenT; return render(); }
-  if (b.id === 'co-all') return coAll();
-  if (b.dataset.t) {
-    const t = V.teens.find(x => x.id === b.dataset.t); if (!t) return;
+  const b = e.target.closest('button'); if (!b || b.disabled) return;
+  const dd = b.dataset;
+  if (dd.acc === 'i') { accIn = !accIn; return render(); }
+  if (dd.acc === 'e') { accE = !accE; return render(); }
+  if (dd.acc === 'o') { accO = !accO; return render(); }
+  if (dd.acc) { accT = !lastOpenT; return render(); }
+  if (dd.do) return act(dd.do);
+  if (dd.t) {
+    if (sel.in) { sel.in.has(dd.t) ? sel.in.delete(dd.t) : sel.in.add(dd.t); return render(); }
+    const t = V.teens.find(x => x.id === dd.t); if (!t) return;
     checkInTeen(t.fullName, t.id.startsWith('tmp_') ? { teenRefOpId: t.id.slice(4) } : { teenId: t.id }, t.guardianPhone);
-  } else openOut(b.dataset.a);
+  } else {
+    if (sel.out) { const a = V.attendance.find(r => r.id === dd.a); if (a) { const k = a.opId || a.id; sel.out.has(k) ? sel.out.delete(k) : sel.out.add(k); } return render(); }
+    openOut(dd.a);
+  }
 };
+function act(a) {
+  const openRows = () => V.attendance.filter(r => r.serviceId === ctx.serviceId && r.branchId === ctx.branchId && r.date === today && r.status !== 'void' && !r.checkOut);
+  if (a === 'isel') { sel.in = new Set(); return render(); }
+  if (a === 'icancel') { sel.in = null; return render(); }
+  if (a === 'isall') { expectedTeens().forEach(t => sel.in.add(t.id)); return render(); }
+  if (a === 'igo') return checkInMany();
+  if (a === 'osel') { sel.out = new Set(); return render(); }
+  if (a === 'ocancel') { sel.out = null; return render(); }
+  if (a === 'osall') { openRows().forEach(r => sel.out.add(r.opId || r.id)); return render(); }
+  if (a === 'ogo') return checkOutMany();
+  if (a === 'ocoall') return coAll();
+}
+function checkInMany() { // codes are still made; ushers read them later from the Check Out tab
+  const ids = [...sel.in], base = { branchId: ctx.branchId, serviceId: ctx.serviceId, date: today };
+  if (!ids.length) return;
+  const ops = ids.map(id => store.checkIn(id.startsWith('tmp_') ? { ...base, teenRefOpId: id.slice(4) } : { ...base, teenId: id }));
+  sel.in = null; render();
+  toast(`${ids.length} checked in. Pickup codes are on the Check Out tab.`, 'ok', () => ops.forEach(o => store.undoCheckIn({ id: 'tmp_' + o.opId, opId: o.opId })));
+}
+function checkOutMany() {
+  const rows = V.attendance.filter(r => sel.out.has(r.opId || r.id) && !r.checkOut);
+  if (!rows.length) return;
+  if (!confirm(`Check out ${rows.length} teen${rows.length === 1 ? '' : 's'} without checking their pickup codes?`)) return;
+  rows.forEach(a => store.checkOut(a, { skipCode: true }));
+  sel.out = null; render();
+  toast(`${rows.length} checked out`, 'ok', () => rows.forEach(a => store.undoCheckOut(a)));
+}
 function reportHtml() {
   const rows = V.attendance.filter(r => r.date === today && r.status !== 'void');
   const cnt = a => [a.length, a.filter(r => r.checkOut).length];
@@ -270,7 +354,7 @@ function coAll() {
   if (n && confirm(`Check out all ${n} teens still in? Do this at the end of service.`)) { store.checkOutAll({ serviceId: ctx.serviceId, branchId: ctx.branchId, date: today }); toast(`${n} teens checked out`); }
 }
 $('#q').oninput = e => { q = e.target.value; render(); };
-const setMode = m => { mode = m; $('#t-in').classList.toggle('on', m === 'in'); $('#t-out').classList.toggle('on', m === 'out'); $('#add').hidden = m !== 'in'; render(); };
+const setMode = m => { mode = m; sel.in = sel.out = null; $('#t-in').classList.toggle('on', m === 'in'); $('#t-out').classList.toggle('on', m === 'out'); $('#add').hidden = m !== 'in'; render(); };
 $('#t-in').onclick = () => setMode('in'); $('#t-out').onclick = () => setMode('out');
 
 /* ---------- check in + guardian code ---------- */
@@ -297,7 +381,7 @@ function openOut(aid) {
     <input id="code" class="codein" inputmode="numeric" maxlength="4" placeholder="Code (optional)" autocomplete="off">
     <input id="note" placeholder="Note (optional)">
     <p class="muted" style="margin:0">Leave the code blank if the guardian does not have it.</p>
-    <button class="btn primary" id="go">Check out</button><button class="btn ghost" id="x">Cancel</button>`);
+    <button class="btn primary" id="go">Check out</button><button class="btn danger" id="undoin">Checked in by mistake? Undo check-in</button><button class="btn ghost" id="x">Cancel</button>`);
   const sc = $('#showcode'); if (sc) sc.onclick = () => { sc.outerHTML = `<div class="code" style="font-size:52px;margin:6px 0">${esc(a.guardianCode)}</div>`; };
   const finish = () => { closeSheet(); toast(`${name} checked out`, 'ok', () => store.undoCheckOut(a)); };
   $('#go').onclick = async () => {
@@ -310,6 +394,7 @@ function openOut(aid) {
     catch { $('#go').disabled = false; }              // bad code: the error toast already shows
   };
   $('#x').onclick = closeSheet;
+  $('#undoin').onclick = () => { if (confirm('Remove this check-in? Only do this if the teen was checked in by mistake.')) { store.undoCheckIn(a); closeSheet(); toast(`${name}'s check-in removed`); } };
 }
 
 /* ---------- quick add ---------- */
@@ -360,7 +445,7 @@ function showLogin(msg) {
   $('#app').hidden = true; $('#login').hidden = false; $('#l-name').value = store.auth.usher || '';
   if (msg) $('#lmsg').textContent = msg;
 }
-function enter() { $('#login').hidden = true; $('#app').hidden = false; store.start(today); render(); }
+function enter() { $('#login').hidden = true; $('#app').hidden = false; store.start(today); loadRecent(true); render(); }
 $('#l-go').onclick = async () => {
   const b = $('#l-go'); b.disabled = true;
   try { await store.login($('#l-code').value.trim(), $('#l-pin').value.trim() || undefined, $('#l-name').value.trim() || 'Usher'); enter(); }
