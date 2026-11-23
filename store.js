@@ -95,7 +95,7 @@ class AppsScriptStore {
 
   /* --- writes: queued first (instant UI), then synced in order --- */
   dispatch(action, params = {}) {
-    const op = { opId: uid(), action, params, at: new Date().toISOString() };
+    const op = { opId: uid(), action, params, at: params.at || new Date().toISOString() }; // params.at = a time chosen by hand
     if (action === 'checkIn') op.params.guardianCode = code4(); // shown immediately, even offline
     this.queue.push(op); save(K.queue, this.queue);
     const done = new Promise((ok, err) => this.waiters.set(op.opId, { ok, err }));
@@ -133,7 +133,7 @@ class AppsScriptStore {
   }
 
   checkIn(p) { return this.dispatch('checkIn', p); }
-  checkOut(row, o = {}) { return this.dispatch('checkOut', { ...this._ref(row), note: o.note || '', pickupCode: o.code || '', skipCode: !!o.skipCode }); }
+  checkOut(row, o = {}) { return this.dispatch('checkOut', { ...this._ref(row), note: o.note || '', pickupCode: o.code || '', skipCode: !!o.skipCode, at: o.at, adjusted: o.adjusted }); }
   checkOutAll(p) { return this.dispatch('checkOutAll', p); }
   undoCheckIn(row) { return this.dispatch('undoCheckIn', this._ref(row)); }
   undoCheckOut(row) { return this.dispatch('undoCheckOut', this._ref(row)); }

@@ -122,6 +122,13 @@ body[data-tab]:not([data-tab="in"]){padding-bottom:calc(88px + env(safe-area-ins
 .ck{display:inline-block;width:26px;height:26px;border-radius:50%;border:2px solid var(--line);vertical-align:middle;position:relative}
 .ck.on{background:var(--pri);border-color:var(--pri)}.ck.on::after{content:'';position:absolute;left:8px;top:3px;width:6px;height:12px;border:solid #fff;border-width:0 3px 3px 0;transform:rotate(45deg)}
 .btn.danger{color:var(--pri);border-color:var(--ring)}
+.when{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:0 0 10px}
+.datebtn{font:inherit;font-weight:700;font-size:16px;background:none;border:0;padding:8px 0;text-align:left;color:var(--ink);min-height:44px}.datebtn:disabled{color:var(--ink)}
+.timebtn{font:inherit;font-weight:700;font-size:15px;border:1px solid var(--line);background:#fff;border-radius:99px;padding:0 14px;min-height:40px;color:var(--ink);white-space:nowrap}
+.timebtn.adj{background:#fef3c7;border-color:#f59e0b;color:#92400e}
+.whenbar{background:#fef3c7;border:1px solid #f59e0b;color:#92400e;border-radius:14px;padding:6px 14px;margin:0 0 10px;font-size:14px;font-weight:600}
+.wline{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:6px 0}.wline button{border:0;background:rgba(146,64,14,.12);color:#92400e;font:inherit;font-weight:700;border-radius:10px;min-height:38px;padding:0 12px;white-space:nowrap}
+.tag{font-style:normal;color:var(--pri);font-weight:600}
 </style></head><body>
 
 <div id="login" class="login" hidden>
@@ -138,7 +145,8 @@ body[data-tab]:not([data-tab="in"]){padding-bottom:calc(88px + env(safe-area-ins
   <header><div class="brand"><img src="logo.png" alt="" width="36" height="36"><b>Check In</b></div><span id="sync" class="pill saved">● Saved</span></header>
   <div class="wrap">
     <main id="checkin">
-      <p id="today" class="today"></p>
+      <div class="when"><button type="button" id="date-btn" class="datebtn"></button><button type="button" id="time-btn" class="timebtn"></button></div>
+      <div id="whenbar" class="whenbar" hidden></div>
       <div><select id="branch"></select><select id="service"></select></div>
       <div class="seg"><button id="t-in" class="on">Check In (<span id="cnt-in">0</span>)</button><button id="t-out">Check Out (<span id="cnt">0</span>)</button></div>
       <input id="q" type="search" placeholder="Search name…" autocomplete="off">
@@ -170,7 +178,7 @@ const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const hm = iso => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 const store = createStore({ url: APPS_SCRIPT_URL, onError: (op, e) => toast(e.message, 'err') });
-let today = todayStr();
+let today = todayStr(), viewDate = today, timeOv = null; // viewDate: the day on screen (admins can go back); timeOv: a time typed by hand, cleared on refresh
 let V = store.view(), mode = 'in', q = '', ctx = JSON.parse(localStorage.getItem('att.ctx') || '{}');
 let accT = null, lastOpenT = true, accR = false, accO = false, accIn = false, accE = true;
 const sel = { in: null, out: null }; // "Select several": null = off, a Set while on
@@ -213,27 +221,107 @@ $('#branch').onchange = e => { accT = null; sel.in = sel.out = null; ctx.branchI
 $('#service').onchange = e => { accT = null; sel.in = sel.out = null; ctx.serviceId = e.target.value; render(); };
 
 /* ---------- list rendering ---------- */
+/* ---------- date and time of a check-in ---------- */
+const pad2 = n => String(n).padStart(2, '0');
+const hmNow = () => { const d = new Date(); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`; };
+const atIso = (date, hv) => { const [y, m, d] = date.split('-').map(Number), [h, mi] = hv.split(':').map(Number); return new Date(y, m - 1, d, h, mi).toISOString(); };
+const fmtHM = hv => { const [h, m] = hv.split(':').map(Number); return new Date(2000, 0, 1, h, m).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); };
+const longDate = d => new Date(d + 'T00:00:00').toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+const shortDate = d => new Date(d + 'T00:00:00').toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' });
+const svcStart = () => {
+  const m = String(V.services.find(s => s.id === ctx.serviceId)?.time || '').match(/(\d{1,2})[:.](\d{2})\s*(am|pm)?/i); if (!m) return '09:00';
+  let h = +m[1]; const ap = (m[3] || '').toLowerCase(); if (ap === 'pm' && h < 12) h += 12; if (ap === 'am' && h === 12) h = 0; return `${pad2(h)}:${m[2]}`;
+};
+const plusMin = (hv, n) => { const [h, m] = hv.split(':').map(Number), t = Math.min(23 * 60 + 59, h * 60 + m + n); return `${pad2(Math.floor(t / 60))}:${pad2(t % 60)}`; };
+// The time a check-in / check-out gets. at = undefined means "the exact moment of the tap" (normal).
+function whenFor(kind) {
+  if (viewDate === today) return timeOv ? { at: atIso(viewDate, timeOv), adjusted: 'manual time' } : { at: undefined, adjusted: '' };
+  const base = timeOv || (kind === 'in' ? svcStart() : plusMin(svcStart(), 120)); // past date (admin): service start; check-out 2 hours later
+  return { at: atIso(viewDate, base), adjusted: 'past date' + (timeOv ? ' + manual time' : '') };
+}
+function outOk(rows, w) { // a check-out cannot be earlier than the check-in
+  if (!w.at) return true;
+  const bad = rows.find(a => a.checkIn && Date.parse(w.at) < Date.parse(a.checkIn));
+  if (bad) toast(`Check-out time can't be before the check-in (${hm(bad.checkIn)}). Change the time first.`, 'err');
+  return !bad;
+}
+function setViewDate(d) {
+  if (d > today || (d !== today && V.role !== 'admin')) return;
+  viewDate = d; timeOv = null; sel.in = sel.out = null; accT = null; q = ''; $('#q').value = '';
+  store.start(viewDate); render();
+}
+let whenHtml = '';
+function updateWhen() {
+  const admin = V.role === 'admin', past = viewDate !== today;
+  const db = $('#date-btn'); db.textContent = longDate(viewDate) + (admin ? ' ▾' : ''); db.disabled = !admin;
+  const tb = $('#time-btn'); tb.textContent = timeOv ? fmtHM(timeOv) : past ? 'Service time' : new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); tb.classList.toggle('adj', !!timeOv || past);
+  const lines = [];
+  if (past) lines.push(`<div class="wline"><span>Editing ${shortDate(viewDate)}. Entries are marked “past date”.</span><button data-w="today">Back to today</button></div>`);
+  if (timeOv) lines.push(`<div class="wline"><span>Time set to ${fmtHM(timeOv)} for check-ins and check-outs</span><button data-w="reset">Reset</button></div>`);
+  else if (past) lines.push(`<div class="wline"><span>Check-ins use ${fmtHM(svcStart())}, check-outs ${fmtHM(plusMin(svcStart(), 120))}, unless you set a time.</span></div>`);
+  const h = lines.join(''); if (h !== whenHtml) { whenHtml = h; $('#whenbar').innerHTML = h; } $('#whenbar').hidden = !h;
+}
+function dateSheet() {
+  const ls = new Date(); ls.setDate(ls.getDate() - (ls.getDay() || 7)); const lastSun = todayStr(ls); // most recent Sunday before today
+  sheet(`<h2>Choose a date</h2><p class="muted">Admin only. Check-ins and check-outs are saved on that day and marked “past date”.</p>
+    <input id="dp" type="date" max="${today}" value="${viewDate}">
+    <button class="btn primary" id="dp-go">Open this date</button>
+    <div class="two"><button class="btn" id="dp-sun">Last Sunday</button><button class="btn" id="dp-today">Today</button></div>
+    <button class="btn ghost" id="dp-x">Cancel</button>`);
+  $('#dp-go').onclick = () => { const v = $('#dp').value; if (!v || v > today) return toast('Pick a day that is not in the future', 'err'); closeSheet(); setViewDate(v); };
+  $('#dp-sun').onclick = () => { closeSheet(); setViewDate(lastSun); };
+  $('#dp-today').onclick = () => { closeSheet(); setViewDate(today); };
+  $('#dp-x').onclick = closeSheet;
+}
+function timeSheet() {
+  sheet(`<h2>Set the time</h2><p class="muted">Used for every check-in and check-out until you reset it or refresh the app. Leave it alone and the app uses the exact time.</p>
+    <input id="tm" type="time" value="${timeOv || (viewDate === today ? hmNow() : svcStart())}">
+    <button class="btn primary" id="tm-ok">Set time</button>${timeOv ? '<button class="btn" id="tm-reset">Use the actual time</button>' : ''}<button class="btn ghost" id="tm-x">Cancel</button>`);
+  $('#tm-ok').onclick = () => {
+    const v = $('#tm').value; if (!v) return;
+    if (viewDate === today && v > hmNow()) return toast("That time hasn't happened yet", 'err');
+    timeOv = v; closeSheet(); updateWhen(); toast(`Time set to ${fmtHM(v)}`);
+  };
+  const r = $('#tm-reset'); if (r) r.onclick = () => { timeOv = null; closeSheet(); updateWhen(); };
+  $('#tm-x').onclick = closeSheet;
+}
+$('#date-btn').onclick = () => { if (V.role === 'admin') dateSheet(); };
+$('#time-btn').onclick = timeSheet;
+$('#whenbar').onclick = e => { const w = e.target.closest('button')?.dataset.w; if (w === 'today') setViewDate(today); else if (w === 'reset') { timeOv = null; updateWhen(); } };
+setInterval(() => { if (!document.hidden) updateWhen(); }, 15000);
+
 function render() {
   const d = todayStr();
-  if (d !== today) { today = d; store.start(today); loadRecent(true); } // app left open overnight: move to the new day
-  $('#today').textContent = new Date().toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  if (d !== today) { const follow = viewDate === today; today = d; if (follow) { viewDate = d; timeOv = null; } store.start(viewDate); loadRecent(true); } // app left open overnight: move to the new day
+  updateWhen();
   fixCtx();
   const list = $('#list');
   if (!ctx.serviceId) { list.innerHTML = '<p class="muted">Add a branch and a service in Settings (Admin PIN) to start.</p>'; return; }
   const tm = new Map(V.teens.map(t => [t.id, t]));
-  const here = V.attendance.filter(r => r.serviceId === ctx.serviceId && r.date === today && r.status !== 'void');
+  const here = V.attendance.filter(r => r.serviceId === ctx.serviceId && r.date === viewDate && r.status !== 'void');
   const att = here.filter(r => r.branchId === ctx.branchId);
   const open = att.filter(r => !r.checkOut), byTeen = new Map(here.map(r => [r.teenId, r]));
   const words = q.toLowerCase().split(/\s+/).filter(Boolean), hit = n => words.every(w => n.toLowerCase().includes(w));
   $('#cnt-in').textContent = att.length; $('#cnt').textContent = att.length - open.length; // Check In = everyone checked in; Check Out = how many have left
   $('#q').hidden = false; $('#report').innerHTML = V.role === 'admin' ? reportHtml() : ''; // report is for admins only
   const campus = id => V.branches.find(b => b.id === id)?.name || '';
+  // two teens with the same name get a small tag (birthday, else guardian, else phone ending) so they can be told apart
+  const normN = s => String(s).toLowerCase().replace(/\s+/g, ' ').trim(), dupN = new Map();
+  V.teens.forEach(t => { if (t.status !== 'archived') dupN.set(normN(t.fullName), (dupN.get(normN(t.fullName)) || 0) + 1); });
+  const tagOf = t => {
+    if (!(dupN.get(normN(t.fullName)) > 1)) return '';
+    const m = String(t.dob || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return 'born ' + new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
+    if (t.guardianName) return 'guardian ' + t.guardianName;
+    return t.phone ? 'phone …' + String(t.phone).replace(/\D/g, '').slice(-4) : '';
+  };
+  const tg = a => { const x = tagOf(tm.get(a.teenId) || { fullName: '' }); return x ? ` · <em class="tag">${esc(x)}</em>` : ''; };
   const bar = (cancel, go, label, k) => `<div class="bar sticky"><button class="btn" data-do="${cancel}">Cancel</button><button class="btn primary" data-do="${go}" ${k ? '' : 'disabled'}>${label} (${k})</button></div>`;
   const selrow = (k, all) => `<div class="selrow"><span class="muted">${k} selected</span><button class="chip" data-do="${all}">Select all</button></div>`;
   if (mode === 'in') {
     const selOn = sel.in !== null, k = selOn ? sel.in.size : 0;
     const row = t => {
-      const a = byTeen.get(t.id), sub = esc([ageOf(t) || '', t.gender, campus(t.homeBranchId)].filter(Boolean).join(' · '));
+      const a = byTeen.get(t.id), sub = esc([ageOf(t) || '', t.gender, campus(t.homeBranchId)].filter(Boolean).join(' · ')) + (tagOf(t) ? ` · <em class="tag">${esc(tagOf(t))}</em>` : '');
       const lab = a ? (a.branchId !== ctx.branchId ? 'At ' + (campus(a.branchId) || 'other branch') : a.checkOut ? 'Out' : '✓ In')
         : selOn ? `<span class="ck ${sel.in.has(t.id) ? 'on' : ''}"></span>` : 'Check in';
       return `<button class="row ${a ? 'done' : ''}" data-t="${esc(t.id)}" ${a ? 'disabled' : ''}><span><b>${esc(t.fullName)}</b><small>${sub}</small></span><i>${lab}</i></button>`;
@@ -245,7 +333,7 @@ function render() {
     } else {
       const exp = expectedTeens();
       if (exp.length) {
-        html += `<button class="acc" data-acc="e"><span>Expected today <small class="muted">${exp.length}</small></span><em class="chev ${accE ? 'up' : ''}"></em></button>`;
+        html += `<button class="acc" data-acc="e"><span>${viewDate === today ? 'Expected today' : 'Expected'} <small class="muted">${exp.length}</small></span><em class="chev ${accE ? 'up' : ''}"></em></button>`;
         if (accE) html += (selOn ? '' : '<div class="bar one"><button class="btn" data-do="isel">Select several</button></div>') + exp.map(row).join('');
       }
       html += `<button class="acc" data-acc="i" style="margin-top:10px"><span>All teenagers <small class="muted">${found.length}</small></span><em class="chev ${accIn ? 'up' : ''}"></em></button>` + (accIn ? found.slice(0, 300).map(row).join('') : '');
@@ -259,8 +347,8 @@ function render() {
     const openT = selOn || (accT === null ? open.length <= 10 : accT); lastOpenT = openT;
     const outRows = att.filter(r => r.checkOut).map(a => ({ a, n: tm.get(a.teenId)?.fullName || 'Unknown' })).filter(x => hit(x.n)).sort((x, y) => y.a.checkOut.localeCompare(x.a.checkOut));
     const outHtml = `<button class="acc" data-acc="o" style="margin-top:10px"><span>Checked out <small class="muted">${att.length - open.length}</small></span><em class="chev ${accO ? 'up' : ''}"></em></button>` +
-      (accO ? outRows.map(({ a, n }) => `<div class="row outrow"><span><b>${esc(n)}</b><small>In ${hm(a.checkIn)} · Out ${hm(a.checkOut)}${a.pending ? ' · syncing' : ''}</small></span><i>✓ Out</i></div>`).join('') || '<p class="muted">Nobody checked out yet.</p>' : '');
-    const rowHtml = ({ a, n }) => `<button class="row" data-a="${esc(a.id)}"><span><b>${esc(n)}</b><small>In ${hm(a.checkIn)}${a.pending ? ' · syncing' : ''}</small></span><i>${selOn ? `<span class="ck ${sel.out.has(key(a)) ? 'on' : ''}"></span>` : 'Check out'}</i></button>`;
+      (accO ? outRows.map(({ a, n }) => `<div class="row outrow"><span><b>${esc(n)}</b><small>In ${hm(a.checkIn)} · Out ${hm(a.checkOut)}${a.pending ? ' · syncing' : ''}${tg(a)}</small></span><i>✓ Out</i></div>`).join('') || '<p class="muted">Nobody checked out yet.</p>' : '');
+    const rowHtml = ({ a, n }) => `<button class="row" data-a="${esc(a.id)}"><span><b>${esc(n)}</b><small>In ${hm(a.checkIn)}${a.pending ? ' · syncing' : ''}${tg(a)}</small></span><i>${selOn ? `<span class="ck ${sel.out.has(key(a)) ? 'on' : ''}"></span>` : 'Check out'}</i></button>`;
     const top = open.length && !selOn ? `<div class="bar"><button class="btn" data-do="osel">Select several</button><button class="btn warn" data-do="ocoall">Check out all (${open.length})</button></div>` : '';
     const body = top + (rows.map(rowHtml).join('') || '<p class="muted">Nobody checked in yet.</p>');
     list.innerHTML = (selOn ? bar('ocancel', 'ogo', 'Check out selected', k) + selrow(k, 'osall') : '') +
@@ -270,8 +358,8 @@ function render() {
 }
 // "Expected today": teens who came to this campus and service in the last 4 weeks and are not in yet
 function expectedTeens() {
-  const inToday = new Set(V.attendance.filter(r => r.serviceId === ctx.serviceId && r.date === today && r.status !== 'void').map(r => r.teenId));
-  const ids = new Set(recent.rows.filter(r => r.date < today && r.branchId === ctx.branchId && r.serviceId === ctx.serviceId).map(r => r.teenId));
+  const inToday = new Set(V.attendance.filter(r => r.serviceId === ctx.serviceId && r.date === viewDate && r.status !== 'void').map(r => r.teenId));
+  const ids = new Set(recent.rows.filter(r => r.date < viewDate && r.branchId === ctx.branchId && r.serviceId === ctx.serviceId).map(r => r.teenId));
   return V.teens.filter(t => ids.has(t.id) && t.status !== 'archived' && !inToday.has(t.id)).sort((a, b) => a.fullName.localeCompare(b.fullName));
 }
 async function loadRecent(force) { // last 4 weeks of attendance; kept on the phone so the list also works offline
@@ -305,7 +393,7 @@ $('#list').onclick = e => {
   }
 };
 function act(a) {
-  const openRows = () => V.attendance.filter(r => r.serviceId === ctx.serviceId && r.branchId === ctx.branchId && r.date === today && r.status !== 'void' && !r.checkOut);
+  const openRows = () => V.attendance.filter(r => r.serviceId === ctx.serviceId && r.branchId === ctx.branchId && r.date === viewDate && r.status !== 'void' && !r.checkOut);
   if (a === 'isel') { sel.in = new Set(); return render(); }
   if (a === 'icancel') { sel.in = null; return render(); }
   if (a === 'isall') { expectedTeens().forEach(t => sel.in.add(t.id)); return render(); }
@@ -317,7 +405,7 @@ function act(a) {
   if (a === 'ocoall') return coAll();
 }
 function checkInMany() { // codes are still made; ushers read them later from the Check Out tab
-  const ids = [...sel.in], base = { branchId: ctx.branchId, serviceId: ctx.serviceId, date: today };
+  const w = whenFor('in'), ids = [...sel.in], base = { branchId: ctx.branchId, serviceId: ctx.serviceId, date: viewDate, at: w.at, adjusted: w.adjusted };
   if (!ids.length) return;
   const ops = ids.map(id => store.checkIn(id.startsWith('tmp_') ? { ...base, teenRefOpId: id.slice(4) } : { ...base, teenId: id }));
   sel.in = null; render();
@@ -326,32 +414,35 @@ function checkInMany() { // codes are still made; ushers read them later from th
 function checkOutMany() {
   const rows = V.attendance.filter(r => sel.out.has(r.opId || r.id) && !r.checkOut);
   if (!rows.length) return;
+  const w = whenFor('out'); if (!outOk(rows, w)) return;
   if (!confirm(`Check out ${rows.length} teen${rows.length === 1 ? '' : 's'} without checking their pickup codes?`)) return;
-  rows.forEach(a => store.checkOut(a, { skipCode: true }));
+  rows.forEach(a => store.checkOut(a, { skipCode: true, at: w.at, adjusted: w.adjusted }));
   sel.out = null; render();
   toast(`${rows.length} checked out`, 'ok', () => rows.forEach(a => store.undoCheckOut(a)));
 }
 function reportHtml() {
-  const rows = V.attendance.filter(r => r.date === today && r.status !== 'void');
+  const rows = V.attendance.filter(r => r.date === viewDate && r.status !== 'void');
   const cnt = a => [a.length, a.filter(r => r.checkOut).length];
   const mine = rows.filter(r => r.branchId === ctx.branchId), [tin, tout] = cnt(mine);
   const line = (k, a, b, c, cls = '') => `<div class="rep ${cls}"><span>${esc(k)}</span><b>${a}</b><b>${b}</b><b>${c}</b></div>`;
-  let h = `<button class="acc" data-acc="r"><span>Report for today <small class="muted">${tin} in · ${tout} out</small></span><em class="chev ${accR ? 'up' : ''}"></em></button>`;
+  let h = `<button class="acc" data-acc="r"><span>${viewDate === today ? 'Report for today' : 'Report for ' + shortDate(viewDate)} <small class="muted">${tin} in · ${tout} out</small></span><em class="chev ${accR ? 'up' : ''}"></em></button>`;
   if (!accR) return h;
   const bn = V.branches.find(b => b.id === ctx.branchId)?.name || '';
-  h += `<div class="src"><b>${new Date().toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</b><p class="muted" style="margin:2px 0 6px">${esc(bn)}</p>` + line('Service', 'In', 'Out', 'Still in', 'h');
+  h += `<div class="src"><b>${longDate(viewDate)}</b><p class="muted" style="margin:2px 0 6px">${esc(bn)}</p>` + line('Service', 'In', 'Out', 'Still in', 'h');
   V.services.filter(s => svcAt(s, ctx.branchId)).forEach(s => { const [i, o] = cnt(mine.filter(r => r.serviceId === s.id)); h += line(s.name, i, o, i - o); });
   h += line('Total', tin, tout, tin - tout, 't');
   if (V.branches.length > 1) {
-    h += `<p style="margin:14px 0 2px"><b>All campuses today</b></p>` + line('Campus', 'In', 'Out', 'Still in', 'h');
+    h += `<p style="margin:14px 0 2px"><b>All campuses${viewDate === today ? ' today' : ''}</b></p>` + line('Campus', 'In', 'Out', 'Still in', 'h');
     V.branches.forEach(b => { const [i, o] = cnt(rows.filter(r => r.branchId === b.id)); h += line(b.name, i, o, i - o); });
   }
   return h + '</div>';
 }
 $('#report').onclick = e => { if (e.target.closest('[data-acc]')) { accR = !accR; render(); } };
 function coAll() {
-  const n = V.attendance.filter(r => r.serviceId === ctx.serviceId && r.branchId === ctx.branchId && r.date === today && r.status !== 'void' && !r.checkOut).length;
-  if (n && confirm(`Check out all ${n} teens still in? Do this at the end of service.`)) { store.checkOutAll({ serviceId: ctx.serviceId, branchId: ctx.branchId, date: today }); toast(`${n} teens checked out`); }
+  const rows = V.attendance.filter(r => r.serviceId === ctx.serviceId && r.branchId === ctx.branchId && r.date === viewDate && r.status !== 'void' && !r.checkOut);
+  if (!rows.length) return;
+  const w = whenFor('out'); // anyone checked in later than this time is simply checked out at their own check-in time
+  if (confirm(`Check out all ${rows.length} teens still in? Do this at the end of service.`)) { store.checkOutAll({ serviceId: ctx.serviceId, branchId: ctx.branchId, date: viewDate, at: w.at, adjusted: w.adjusted }); toast(`${rows.length} teens checked out`); }
 }
 $('#q').oninput = e => { q = e.target.value; render(); };
 const setMode = m => { mode = m; sel.in = sel.out = null; $('#t-in').classList.toggle('on', m === 'in'); $('#t-out').classList.toggle('on', m === 'out'); $('#add').hidden = m !== 'in'; render(); };
@@ -359,11 +450,11 @@ $('#t-in').onclick = () => setMode('in'); $('#t-out').onclick = () => setMode('o
 
 /* ---------- check in + guardian code ---------- */
 function checkInTeen(name, ref, phone) {
-  const r = store.checkIn({ branchId: ctx.branchId, serviceId: ctx.serviceId, date: today, ...ref });
+  const w = whenFor('in'), r = store.checkIn({ branchId: ctx.branchId, serviceId: ctx.serviceId, date: viewDate, ...ref, at: w.at, adjusted: w.adjusted });
   const svc = V.services.find(s => s.id === ctx.serviceId)?.name || 'service';
   const msg = `${name} is checked in at ${svc}. Pickup code: ${r.guardianCode}`;
   const d = (() => { const raw = String(phone || '').trim(); let x = raw.replace(/\D/g, ''); if (!x) return ''; if (raw.startsWith('+') && !x.startsWith('234')) return x; if (x.startsWith('234')) x = x.slice(3); return '234' + x.replace(/^0/, ''); })();
-  sheet(`<div class="tick">✓</div><h2>${esc(name)}</h2><p class="muted">Checked in at ${hm(new Date().toISOString())} · give this code to the guardian</p>
+  sheet(`<div class="tick">✓</div><h2>${esc(name)}</h2><p class="muted">Checked in at ${hm(w.at || new Date().toISOString())} · give this code to the guardian</p>
     <div class="code">${r.guardianCode}</div>
     <a class="btn wa" target="_blank" rel="noopener" href="https://wa.me/${d}?text=${encodeURIComponent(msg)}">Share via WhatsApp</a>
     <a class="btn" href="sms:${d ? '+' + d : ''}?&body=${encodeURIComponent(msg)}">Share via SMS</a>
@@ -386,11 +477,12 @@ function openOut(aid) {
   const finish = () => { closeSheet(); toast(`${name} checked out`, 'ok', () => store.undoCheckOut(a)); };
   $('#go').onclick = async () => {
     const code = $('#code').value.trim();
-    if (!code) { store.checkOut(a, { note: $('#note').value.trim(), skipCode: true }); return finish(); } // blank = code skipped
+    const w = whenFor('out'); if (!outOk([a], w)) return;
+    if (!code) { store.checkOut(a, { note: $('#note').value.trim(), skipCode: true, at: w.at, adjusted: w.adjusted }); return finish(); } // blank = code skipped
     if (!/^\d{4}$/.test(code)) return toast('The code is 4 digits. Leave it blank to skip.', 'err');
     if (!navigator.onLine) return toast('Offline: leave the code blank, or reconnect', 'err');
     $('#go').disabled = true;                         // the server verifies the code, so wait for its answer
-    try { await store.checkOut(a, { note: $('#note').value.trim(), code }).done; finish(); }
+    try { await store.checkOut(a, { note: $('#note').value.trim(), code, at: w.at, adjusted: w.adjusted }).done; finish(); }
     catch { $('#go').disabled = false; }              // bad code: the error toast already shows
   };
   $('#x').onclick = closeSheet;
@@ -445,7 +537,7 @@ function showLogin(msg) {
   $('#app').hidden = true; $('#login').hidden = false; $('#l-name').value = store.auth.usher || '';
   if (msg) $('#lmsg').textContent = msg;
 }
-function enter() { $('#login').hidden = true; $('#app').hidden = false; store.start(today); loadRecent(true); render(); }
+function enter() { $('#login').hidden = true; $('#app').hidden = false; store.start(viewDate); loadRecent(true); render(); }
 $('#l-go').onclick = async () => {
   const b = $('#l-go'); b.disabled = true;
   try { await store.login($('#l-code').value.trim(), $('#l-pin').value.trim() || undefined, $('#l-name').value.trim() || 'Usher'); enter(); }

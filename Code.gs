@@ -8,7 +8,7 @@ const SCHEMA = {
   Teenagers: ['id','fullName','gender','age','dob','phone','guardianName','guardianPhone','homeBranchId','medicalNotes','dateAdded','status','opId','firstTimer'],
   Branches:  ['id','name','location'],
   Services:  ['id','name','day','time','branchId'],
-  Attendance:['id','teenId','branchId','serviceId','date','checkIn','checkOut','checkoutNote','guardianCode','checkedInBy','checkedOutBy','codeCheck','status','opId']
+  Attendance:['id','teenId','branchId','serviceId','date','checkIn','checkOut','checkoutNote','guardianCode','checkedInBy','checkedOutBy','codeCheck','status','opId','teenName','branchName','serviceName','adjusted']
 };
 const TEEN_EDIT = ['fullName','gender','age','dob','phone','guardianName','guardianPhone','homeBranchId','medicalNotes','status','firstTimer'];
 const ADMIN_ONLY = ['guardianPhone','medicalNotes'];
@@ -17,6 +17,7 @@ function setup() {
   const ss = SpreadsheetApp.getActive();
   Object.keys(SCHEMA).forEach(name => {
     const sh = ss.getSheetByName(name) || ss.insertSheet(name), h = SCHEMA[name];
+    if (sh.getMaxColumns() < h.length) sh.insertColumnsAfter(sh.getMaxColumns(), h.length - sh.getMaxColumns());
     sh.getRange(1, 1, 1, h.length).setValues([h]).setFontWeight('bold');
     sh.setFrozenRows(1);
     sh.getRange(2, 1, sh.getMaxRows() - 1, h.length).setNumberFormat('@'); // keep phones/dates/codes as typed
@@ -25,6 +26,7 @@ function setup() {
   if (!p.getProperty('TEAM_CODE')) p.setProperty('TEAM_CODE', 'change-me');
   if (!p.getProperty('ADMIN_PIN')) p.setProperty('ADMIN_PIN', '0000');
   if (!p.getProperty('REV')) p.setProperty('REV', String(Date.now()));
+  backfillNames(); // fills teen / campus / service names on existing attendance rows (safe to run again)
 }
 
 /* ---------- HTTP entry ---------- */
@@ -81,8 +83,11 @@ function tbl_(name) {
 const strip_ = o => { const c = Object.assign({}, o); delete c._row; return c; };
 const pubTeen_ = (t, role) => { const o = strip_(t); if (role !== 'admin') ADMIN_ONLY.forEach(f => delete o[f]); return o; };
 const pubAtt_ = (a, role) => { const o = strip_(a); if (role !== 'admin') delete o.guardianCode; return o; };
+const nameOf_ = (tab, id, key) => (tbl_(tab).all().find(x => x.id === id) || {})[key] || '';
 const newId_ = prefix => prefix + '_' + Utilities.getUuid().replace(/-/g, '').slice(0, 10);
 const today_ = () => Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+const PAST = /past date/;   // only an admin may mark an entry "past date"
+const mark_ = (a, b) => { if (!b) return a || ''; return [...new Set(String(a || '').split(' + ').concat(String(b).split(' + ')).filter(Boolean))].join(' + '); };
 const time_ = at => { const now = Date.now(), t = at ? Date.parse(at) : NaN; return new Date(isNaN(t) || t > now + 300000 ? now : t).toISOString(); };
 function pick_(src) { const o = {}; TEEN_EDIT.forEach(k => { if (src[k] != null) o[k] = String(src[k]).trim(); }); return o; }
 
@@ -120,9 +125,11 @@ function find_(rows, p) {
   if (!r) throw fail_('not_found', 'Record not found');
   return r;
 }
-function checkIn_(p) {
+function checkIn_(p, role) {
   return withLock_(() => {
     if (!p.opId) throw fail_('missing_field', 'opId required');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(p.date || '')) throw fail_('bad_date', 'Invalid date');
+    if (PAST.test(p.adjusted || '') && role !== 'admin') throw fail_('admin_only', 'Only an admin can check in on a past date');
     const A = tbl_('Attendance'), rows = A.all();
     const replay = rows.find(r => r.opId === p.opId);
     if (replay) return { record: pubAtt_(replay, 'admin'), replayed: true };
@@ -133,27 +140,32 @@ function checkIn_(p) {
     // Code is generated on the device so it can show offline; codes only need to match their own row.
     const code = /^\d{4}$/.test(p.guardianCode || '') ? p.guardianCode : String(Math.floor(Math.random() * 10000)).padStart(4, '0');
     const rec = { id: newId_('att'), teenId: teen.id, branchId: p.branchId, serviceId: p.serviceId, date: p.date, checkIn: time_(p.at),
-      checkOut: '', checkoutNote: '', guardianCode: code, checkedInBy: p.by || '', checkedOutBy: '', codeCheck: '', status: 'in', opId: p.opId };
+      checkOut: '', checkoutNote: '', guardianCode: code, checkedInBy: p.by || '', checkedOutBy: '', codeCheck: '', status: 'in', opId: p.opId,
+      teenName: teen.fullName, branchName: nameOf_('Branches', p.branchId, 'name'), serviceName: nameOf_('Services', p.serviceId, 'name'), adjusted: String(p.adjusted || '').slice(0, 40) };
     A.add(rec);
     return { record: pubAtt_(rec, 'admin') };
   });
 }
-function checkOut_(p) {
+function checkOut_(p, role) {
   return withLock_(() => {
     const A = tbl_('Attendance'), r = find_(A.all(), p);
     if (r.status === 'void') throw fail_('voided', 'This check-in was undone');
     if (r.checkOut) return { record: pubAtt_(r, 'admin'), replayed: true };
     if (!p.skipCode && r.guardianCode && String(p.pickupCode || '') !== r.guardianCode) throw fail_('bad_code', 'Code does not match');
-    Object.assign(r, { checkOut: time_(p.at), checkoutNote: p.note || '', checkedOutBy: p.by || '', codeCheck: p.skipCode ? 'skipped' : 'verified' });
+    if (PAST.test(p.adjusted || '') && role !== 'admin') throw fail_('admin_only', 'Only an admin can check out on a past date');
+    let t = time_(p.at);   // a check-out can never be earlier than the check-in (2 minutes of clock difference between phones is forgiven)
+    if (r.checkIn && Date.parse(t) < Date.parse(r.checkIn)) { if (Date.parse(r.checkIn) - Date.parse(t) > 120000) throw fail_('bad_time', 'Check-out time is earlier than the check-in time'); t = r.checkIn; }
+    Object.assign(r, { checkOut: t, checkoutNote: p.note || '', checkedOutBy: p.by || '', codeCheck: p.skipCode ? 'skipped' : 'verified', adjusted: mark_(r.adjusted, p.adjusted) });
     A.set(r);
     return { record: pubAtt_(r, 'admin') };
   });
 }
-function checkOutAll_(p) {
+function checkOutAll_(p, role) {
   return withLock_(() => {
+    if (PAST.test(p.adjusted || '') && role !== 'admin') throw fail_('admin_only', 'Only an admin can check out on a past date');
     const A = tbl_('Attendance'), t = time_(p.at); let n = 0;
     A.all().filter(r => r.serviceId === p.serviceId && r.date === p.date && (!p.branchId || r.branchId === p.branchId) && r.status !== 'void' && !r.checkOut).forEach(r => {
-      Object.assign(r, { checkOut: t, checkoutNote: 'Bulk check-out', checkedOutBy: p.by || '', codeCheck: 'bulk' });
+      Object.assign(r, { checkOut: r.checkIn && Date.parse(r.checkIn) > Date.parse(t) ? r.checkIn : t, checkoutNote: 'Bulk check-out', checkedOutBy: p.by || '', codeCheck: 'bulk', adjusted: mark_(r.adjusted, p.adjusted) });
       A.set(r); n++;
     });
     return { count: n };
@@ -229,6 +241,8 @@ function bulkAdd_(p) { // used by the Stage 4 import tool; max 500 rows per call
     if (name === 'Attendance') { // never double-count a teen at the same service and date
       const seen = new Set(tbl_('Attendance').all().filter(r => r.status !== 'void').map(r => r.teenId + '|' + r.serviceId + '|' + r.date));
       rows = rows.filter(r => { const k = r.teenId + '|' + r.serviceId + '|' + r.date; if (seen.has(k)) { skipped++; return false; } seen.add(k); return true; });
+      const tn = new Map(tbl_('Teenagers').all().map(t => [t.id, t.fullName])), bn = new Map(tbl_('Branches').all().map(b => [b.id, b.name])), sn = new Map(tbl_('Services').all().map(s => [s.id, s.name]));
+      rows.forEach(r => { r.teenName = r.teenName || tn.get(r.teenId) || ''; r.branchName = r.branchName || bn.get(r.branchId) || ''; r.serviceName = r.serviceName || sn.get(r.serviceId) || ''; });
     }
     tbl_(name).addMany(rows);
     return { added: rows.length, skipped, ids: rows.map(r => r.id) };
@@ -243,4 +257,13 @@ function readSheet_(p) {
   const gid = (String(p.url).match(/[#&?]gid=(\d+)/) || [])[1];
   const sh = (gid && ss.getSheets().find(s => String(s.getSheetId()) === gid)) || ss.getSheets()[0];
   return { name: ss.getName() + ' / ' + sh.getName(), rows: sh.getDataRange().getDisplayValues().slice(0, 5000) };
+}
+
+// Writes readable names next to the ids on the Attendance tab. Run setup() (or this) again any time to refresh them.
+function backfillNames() {
+  const nm = new Map(tbl_('Teenagers').all().map(t => [t.id, t.fullName]));
+  const bn = new Map(tbl_('Branches').all().map(b => [b.id, b.name])), sn = new Map(tbl_('Services').all().map(s => [s.id, s.name]));
+  const A = tbl_('Attendance').all(); if (!A.length) return;
+  const out = A.map(r => [nm.get(r.teenId) || r.teenName || '', bn.get(r.branchId) || r.branchName || '', sn.get(r.serviceId) || r.serviceName || '']);
+  SpreadsheetApp.getActive().getSheetByName('Attendance').getRange(2, SCHEMA.Attendance.indexOf('teenName') + 1, out.length, 3).setNumberFormat('@').setValues(out);
 }

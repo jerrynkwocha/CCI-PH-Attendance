@@ -63,7 +63,7 @@ export function initRecords({ store, getV, esc, toast, sheet, closeSheet }) {
   const $ = s => document.querySelector(s);
   const isAdmin = () => getV().role === 'admin';
   const f = { q: '', b: '', g: '', min: '', max: '', arch: false };
-  let built = false, att = null, attAt = 0, src = [], plan = null;
+  let built = false, att = null, attAt = 0, src = [], plan = null, accOpen = false;
 
   const bName = id => getV().branches.find(b => b.id === id)?.name || '';
   const svcName = id => getV().services.find(s => s.id === id)?.name || '';
@@ -87,7 +87,7 @@ export function initRecords({ store, getV, esc, toast, sheet, closeSheet }) {
     $('#r-g').onchange = e => { f.g = e.target.value; list(); };
     $('#r-min').oninput = e => { f.min = e.target.value; list(); };
     $('#r-max').oninput = e => { f.max = e.target.value; list(); };
-    $('#r-list').onclick = e => { const b = e.target.closest('button'); if (b) profile(b.dataset.id); };
+    $('#r-list').onclick = e => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.acc) { accOpen = !accOpen; return list(); } profile(b.dataset.id); };
     $('#r-tools').onclick = e => {
       const a = e.target.closest('button')?.dataset.a;
       if (a === 'add') form(); else if (a === 'imp') { src = []; plan = null; drawImport(); } else if (a === 'exp') exportCsv();
@@ -105,9 +105,10 @@ export function initRecords({ store, getV, esc, toast, sheet, closeSheet }) {
     const sel = $('#r-b'); if (sel.dataset.h !== bs) { sel.innerHTML = bs; sel.dataset.h = bs; } sel.value = f.b;
   }
   function list() {
-    const rows = filtered();
-    $('#r-n').textContent = `${rows.length} teen${rows.length === 1 ? '' : 's'}${rows.length > 100 ? ' · showing first 100' : ''}`;
-    $('#r-list').innerHTML = rows.slice(0, 100).map(t => `<button class="row" data-id="${esc(t.id)}"><span><b>${esc(t.fullName)}</b><small>${esc([ageOf(t) || '', t.gender, bName(t.homeBranchId), t.status === 'archived' ? 'Archived' : ''].filter(Boolean).join(' · '))}</small></span><i>›</i></button>`).join('');
+    const rows = filtered(), active = !!(f.q || f.b || f.g || f.min !== '' || f.max !== ''), open = active || accOpen; // searching or filtering opens the list
+    $('#r-n').textContent = open && rows.length > 100 ? 'Showing the first 100. Search or filter to narrow it down.' : '';
+    $('#r-list').innerHTML = `<button class="acc" data-acc="r"><span>${active ? 'Results' : 'Teenagers'} <small class="muted">${rows.length}</small></span><em class="chev ${open ? 'up' : ''}"></em></button>` +
+      (open ? rows.slice(0, 100).map(t => `<button class="row" data-id="${esc(t.id)}"><span><b>${esc(t.fullName)}</b><small>${esc([ageOf(t) || '', t.gender, bName(t.homeBranchId), t.status === 'archived' ? 'Archived' : ''].filter(Boolean).join(' · '))}</small></span><i>›</i></button>`).join('') : '');
   }
   async function unlock() {
     const pin = prompt('Admin PIN'); if (!pin) return;
