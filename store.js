@@ -15,7 +15,7 @@ const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } cat
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(16).slice(2));
 const code4 = () => String(crypto.getRandomValues(new Uint32Array(1))[0] % 10000).padStart(4, '0');
 const RETRY = new Set(['network', 'server_error', 'busy']);
-const EMPTY = { teens: [], branches: [], services: [], attendance: [], rev: null, role: null, teamCode: null, date: null };
+const EMPTY = { teens: [], branches: [], services: [], attendance: [], rev: null, role: null, teamCode: null, date: null, followups: [] };
 
 export const todayStr = (d = new Date()) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -129,6 +129,7 @@ class AppsScriptStore {
       else up(c.attendance, res.record);
     }
     if (res.teen) up(c.teens, res.teen);
+    if (res.followup) up(c.followups = c.followups || [], res.followup);
     save(K.cache, c);
   }
 
@@ -138,6 +139,7 @@ class AppsScriptStore {
   undoCheckIn(row) { return this.dispatch('undoCheckIn', this._ref(row)); }
   undoCheckOut(row) { return this.dispatch('undoCheckOut', this._ref(row)); }
   addTeen(teen) { return this.dispatch('addTeen', { teen }); }
+  addFollowUp(p) { return this.dispatch('addFollowUp', p); } // {teenId, status, note}
   _ref(row) { return { id: String(row.id).startsWith('tmp_') ? undefined : row.id, refOpId: row.opId }; }
 
   read(action, params = {}) { return this._call({ action, ...params }); } // online reads/writes that skip the queue
@@ -149,9 +151,10 @@ class AppsScriptStore {
 
   /* --- what the UI renders: server snapshot + not-yet-synced ops --- */
   view() {
-    const c = this.cache, teens = c.teens.slice(); let att = c.attendance.map(r => ({ ...r }));
+    const c = this.cache, teens = c.teens.slice(); let att = c.attendance.map(r => ({ ...r })); const fu = (c.followups || []).slice();
     const find = p => att.find(r => (p.id && r.id === p.id) || (p.refOpId && r.opId === p.refOpId));
     for (const { action, params: p, opId, at } of this.queue) {
+      if (action === 'addFollowUp') fu.push({ id: 'tmp_' + opId, opId, teenId: p.teenId, status: p.status, note: p.note || '', by: this.auth.usher || '', at, pending: true });
       if (action === 'addTeen') teens.push({ ...p.teen, id: 'tmp_' + opId, opId, status: 'active', pending: true });
       if (action === 'checkIn' && !att.some(r => r.opId === opId))
         att.push({ id: 'tmp_' + opId, opId, teenId: p.teenId || 'tmp_' + p.teenRefOpId, branchId: p.branchId, serviceId: p.serviceId, date: p.date, checkIn: at, checkOut: '', guardianCode: p.guardianCode, status: 'in', pending: true });
@@ -160,6 +163,6 @@ class AppsScriptStore {
       if (action === 'undoCheckIn') { const r = find(p); att = att.filter(x => x !== r); }
       if (action === 'checkOutAll') att.forEach(r => { if (r.serviceId === p.serviceId && r.date === p.date && !r.checkOut) { r.checkOut = at; r.pending = true; } });
     }
-    return { ...c, teens, attendance: att, queued: this.queue.length };
+    return { ...c, teens, attendance: att, followups: fu, queued: this.queue.length };
   }
 }

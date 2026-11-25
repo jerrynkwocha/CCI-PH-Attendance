@@ -1,6 +1,5 @@
-// settings.js — Stage 4: branches, services, team access code, Admin PIN, birthdays this week (Admin only).
+// settings.js — Stage 4: branches, services, team access code, Admin PIN (Admin only). Birthdays now live in the Follow up tab.
 const FOOT = '<p class="made">Built with ❤️ by <a href="https://primeflowtechnology.com.ng" target="_blank" rel="noopener">PrimeFlow Technology Limited</a></p>';
-const fmtD = d => d.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' });
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 import { svcBranches } from './store.js';
@@ -11,44 +10,23 @@ export function initSettings({ store, getV, esc, toast, sheet, closeSheet, unloc
   let last = '', wired = false;
   const bName = id => getV().branches.find(b => b.id === id)?.name || '';
 
-  function birthdays() { // Monday–Sunday of the current week
-    const now = new Date(), mon = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (now.getDay() + 6) % 7);
-    const days = Array.from({ length: 7 }, (_, i) => new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + i)), out = [];
-    getV().teens.forEach(t => {
-      const m = String(t.dob || '').match(/^(\d{4})-(\d{2})-(\d{2})/); if (!m || t.status === 'archived') return;
-      const d = days.find(x => x.getMonth() + 1 === +m[2] && x.getDate() === +m[3]);
-      if (d) out.push({ d, t, age: d.getFullYear() - +m[1] });
-    });
-    return out.sort((a, b) => a.d - b.d);
-  }
-
   function draw() {
     const V = getV(), root = $('#set');
     if (!wired) { root.onclick = onClick; wired = true; }
     let h;
     if (!isAdmin()) h = `<h2>Settings</h2><p class="muted">Settings need the Admin PIN.</p><button class="btn" data-a="unlock">Unlock (Admin PIN)</button>`;
     else {
-      const bd = birthdays(), known = new Set(V.branches.map(b => b.id));
-      // one block per home campus, so each campus can see (and share) its own birthdays
-      const groups = [...V.branches.map(b => [b.id, b.name, bd.filter(x => x.t.homeBranchId === b.id)]), ['', 'No home campus', bd.filter(x => !known.has(x.t.homeBranchId))]].filter(g => g[2].length);
       h = `<h2>Team access code</h2><div class="src"><input id="s-code" value="${esc(V.teamCode || '')}" placeholder="Team access code"><button class="btn" data-a="code">Save code</button></div>
         <h2>Admin PIN</h2><div class="src"><input id="s-pin" type="password" inputmode="numeric" placeholder="New PIN (4–8 digits)"><button class="btn" data-a="pin">Change PIN</button></div>
         <h2>Branches</h2>${V.branches.map(b => `<button class="row" data-a="b-edit" data-id="${esc(b.id)}"><span><b>${esc(b.name)}</b><small>${esc(b.location)}</small></span><i>Edit</i></button>`).join('')}
         <button class="btn" data-a="b-new">+ Add branch</button>
         <h2>Services</h2>${V.services.map(s => `<button class="row" data-a="s-edit" data-id="${esc(s.id)}"><span><b>${esc(s.name)}</b><small>${esc([s.day, s.time, svcBranches(s).map(bName).join(', ')].filter(Boolean).join(' · '))}</small></span><i>Edit</i></button>`).join('')}
-        <button class="btn" data-a="s-new">+ Add service</button>
-        <h2>Birthdays this week</h2>${groups.map(([id, name, list]) => `<div class="src"><div class="stat"><b>${esc(name)}</b><button class="chip" data-a="b-share" data-id="${esc(id)}">Share</button></div>${list.map(x => `<div class="stat"><span>${esc(x.t.fullName)}</span><span class="muted">${fmtD(x.d)} · turns ${x.age}</span></div>`).join('')}</div>`).join('') || '<p class="muted">No birthdays this week.</p>'}`;
+        <button class="btn" data-a="s-new">+ Add service</button>`;
     }
     h += FOOT;
     if (h !== last) { root.innerHTML = h; last = h; }
   }
 
-  function shareBd(id) { // opens WhatsApp with that campus's birthday list ready to send
-    const V = getV(), b = V.branches.find(x => x.id === id), known = new Set(V.branches.map(x => x.id));
-    const list = birthdays().filter(x => id ? x.t.homeBranchId === id : !known.has(x.t.homeBranchId));
-    const text = `🎂 Birthdays this week${b ? ' · ' + b.name : ''}\n` + list.map(x => `${fmtD(x.d)} – ${x.t.fullName} (turns ${x.age})`).join('\n');
-    window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
-  }
   async function onClick(e) {
     const el = e.target.closest('button'); if (!el) return;
     const a = el.dataset.a, V = getV();
@@ -59,7 +37,6 @@ export function initSettings({ store, getV, esc, toast, sheet, closeSheet, unloc
     else if (a === 'b-edit') branchForm(V.branches.find(b => b.id === el.dataset.id));
     else if (a === 's-new') svcForm();
     else if (a === 's-edit') svcForm(V.services.find(s => s.id === el.dataset.id));
-    else if (a === 'b-share') shareBd(el.dataset.id);
   }
   async function secret(body, relogin, msg) {
     try { await store.read('setSecrets', body); await relogin(body); toast(msg); } catch (e) { toast(e.message, 'err'); }

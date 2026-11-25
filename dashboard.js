@@ -5,7 +5,7 @@ const addDays = (d, n) => { const x = new Date(d + 'T00:00:00'); x.setDate(x.get
 const wk = d => { const x = new Date(d + 'T00:00:00'); x.setDate(x.getDate() - (x.getDay() + 6) % 7); return todayStr(x); }; // Monday of that week
 const m = (v, k) => `<div class="m"><b>${v}</b><span>${k}</span></div>`;
 
-export function initDashboard({ store, getV, esc, toast, unlock }) {
+export function initDashboard({ store, getV, esc, toast, unlock, goFollowup }) {
   const $ = s => document.querySelector(s); let today = todayStr();
   const f = { b: '', s: '', from: addDays(today, -55), to: today };
   let built = false, all = null, at = 0, loading = false;
@@ -20,7 +20,7 @@ export function initDashboard({ store, getV, esc, toast, unlock }) {
     $('#d-s').onchange = e => { f.s = e.target.value; render(); };
     $('#d-from').onchange = e => { f.from = e.target.value || f.from; f.touched = true; render(); };
     $('#d-to').onchange = e => { f.to = e.target.value || f.to; f.touched = true; render(); };
-    $('#d-body').onclick = e => { const a = e.target.closest('button')?.dataset.a; if (a === 'unlock') unlock(); else if (a === 'reload') load(true); };
+    $('#d-body').onclick = e => { const a = e.target.closest('button')?.dataset.a; if (a === 'unlock') unlock(); else if (a === 'reload') load(true); else if (a === 'fu') goFollowup && goFollowup(); };
     built = true;
   }
   function filters() {
@@ -76,23 +76,6 @@ export function initDashboard({ store, getV, esc, toast, unlock }) {
     const bc = V.branches.map(b => [b.name, all.filter(r => r.branchId === b.id && inS(r) && inR(r)).length]), bmax = Math.max(1, ...bc.map(x => x[1]));
     const hb = (items, max) => items.map(([k, n]) => `<div class="hb"><span>${esc(k)}</span><div><i style="width:${n / max * 100}%"></i></div><b>${n}</b></div>`).join('');
 
-    // Absentees: missed 3+ consecutive services (counted on the service each teen mostly attends)
-    const dates = new Map(), went = new Map();
-    base.forEach(r => {
-      if (!dates.has(r.serviceId)) dates.set(r.serviceId, new Set());
-      dates.get(r.serviceId).add(r.date);
-      if (!went.has(r.teenId)) went.set(r.teenId, new Map());
-      const w = went.get(r.teenId); if (!w.has(r.serviceId)) w.set(r.serviceId, new Set()); w.get(r.serviceId).add(r.date);
-    });
-    const sorted = new Map([...dates].map(([k, v]) => [k, [...v].sort().reverse()]));
-    const abs = [];
-    went.forEach((bySvc, id) => {
-      const t = tm.get(id); if (!t || t.status === 'archived') return;
-      const svc = f.s || [...bySvc].sort((a, b) => b[1].size - a[1].size)[0][0], mine = bySvc.get(svc), ds = sorted.get(svc) || [];
-      let miss = 0; while (miss < ds.length && !mine?.has(ds[miss])) miss++;
-      if (miss >= 3 && miss < ds.length) abs.push({ t, miss, last: ds[miss] });
-    });
-    abs.sort((a, b) => b.miss - a.miss);
 
     setBody(`<div class="mg">${m(rows.length, 'Total attendance')}${m(nowIn, 'Checked in now')}${m(rows.filter(r => r.checkOut).length, 'Checked out')}${m(newTeens, 'New teens')}
         ${m(firstTimers, 'First-timers')}${m(sessions ? (rows.length / sessions).toFixed(1) : '–', 'Avg per service')}${m(avgMin == null ? '–' : avgMin + ' min', 'Avg time spent')}${m(never, 'Never checked out')}</div>
@@ -101,8 +84,7 @@ export function initDashboard({ store, getV, esc, toast, unlock }) {
       <div class="src"><b>Branch comparison</b>${hb(bc, bmax) || '<p class="muted">No branches yet.</p>'}</div>
       <div class="src"><b>Gender</b> <small class="muted">(different teens)</small>${hb(Object.entries(g), Math.max(1, uniq.length))}</div>
       <div class="src"><b>Age</b>${hb(ab, Math.max(1, uniq.length))}</div>
-      <div class="src"><b>Absentees</b> <small class="muted">missed 3+ services in a row</small>
-        ${abs.slice(0, 40).map(a => `<div class="stat"><span>${esc(a.t.fullName)}</span><span class="muted">missed ${a.miss} · last ${esc(a.last)}</span></div>`).join('') || '<p class="muted">None.</p>'}</div>
+      <div class="src"><b>Absentees</b> <small class="muted">now in the Follow up tab, with phone numbers</small><button class="btn" data-a="fu">Open Follow up</button></div>
       <button class="btn ghost" data-a="reload">Refresh data</button>`);
   }
 

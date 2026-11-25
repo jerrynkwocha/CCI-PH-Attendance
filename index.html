@@ -49,7 +49,7 @@ select,input{width:100%;min-height:52px;font:inherit;font-size:17px;padding:0 14
 .btn{display:flex;align-items:center;justify-content:center;width:100%;min-height:56px;border-radius:16px;border:1.5px solid var(--line);background:#fff;font:inherit;font-size:17px;font-weight:700;margin-top:10px;color:var(--ink);text-decoration:none}
 .btn.primary{background:var(--pri);border-color:var(--pri);color:#fff}.btn.wa{background:#25d366;border-color:#25d366;color:#fff}.btn.ghost{border-color:transparent;color:var(--mut)}
 .fab{position:fixed;right:14px;bottom:calc(84px + env(safe-area-inset-bottom));min-height:56px;padding:0 22px;border:0;border-radius:99px;background:var(--pri);color:#fff;font:inherit;font-size:17px;font-weight:700;box-shadow:0 6px 18px rgba(79,70,229,.4)}
-nav{position:fixed;left:0;right:0;bottom:0;display:grid;grid-template-columns:repeat(4,1fr);background:var(--card);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
+nav{position:fixed;left:0;right:0;bottom:0;display:grid;grid-template-columns:repeat(5,1fr);background:var(--card);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
 nav button{min-height:68px;border:0;background:none;font:inherit;font-size:13px;font-weight:700;color:var(--mut)}
 nav button.on{color:var(--pri)}
 .sheet{position:fixed;inset:0;background:rgba(17,24,39,.55);display:flex;align-items:flex-end;z-index:20}
@@ -130,6 +130,24 @@ body[data-tab]:not([data-tab="in"]){padding-bottom:calc(88px + env(safe-area-ins
 .wline{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:6px 0}.wline button{border:0;background:rgba(146,64,14,.12);color:#92400e;font:inherit;font-weight:700;border-radius:10px;min-height:38px;padding:0 12px;white-space:nowrap}
 .tag{font-style:normal;color:var(--pri);font-weight:600}
 .datebtn{font-size:14px;font-weight:600;min-height:40px;padding:6px 0}.timebtn{font-size:13px;min-height:36px;padding:0 12px}
+nav button{font-size:12px;position:relative}
+.badge{position:absolute;top:6px;left:calc(50% + 6px);background:var(--pri);color:#fff;border-radius:99px;font-size:11px;min-width:18px;height:18px;line-height:18px;padding:0 5px;font-weight:700;text-align:center}
+.fubar{margin:0 0 8px}
+.grph{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:6px 0 4px}
+.grpt{flex:1;display:flex;align-items:center;gap:8px;border:0;background:none;font:inherit;color:var(--ink);padding:8px 0;min-height:44px;text-align:left}.grpt .chev{margin-left:auto}
+.arow{width:100%;display:grid;grid-template-columns:1fr 52px 92px;gap:8px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:8px 12px;margin-bottom:6px;font:inherit;font-size:15px;color:var(--ink);text-align:left;min-height:56px}
+.arow.b{grid-template-columns:1fr 100px}
+.arow.h{background:none;border:0;min-height:28px;padding:0 12px;margin:0;font-size:12px;font-weight:700;color:var(--mut)}
+.arow .am{text-align:center;font-weight:800}.arow .al{text-align:right;color:var(--mut);font-size:13px}.arow.h .am{font-weight:700}
+.arow .an b{display:block;font-weight:700}.arow .an small{display:block;font-size:12px}
+.stch{color:var(--pri);font-weight:600}
+.vcard{background:#fff;border:1px solid var(--line);border-radius:16px;padding:12px;margin-bottom:10px;text-align:left}
+.vh{display:flex;justify-content:space-between;gap:8px}.vs{font-size:13px;color:var(--mut);margin:2px 0 6px}
+.vl{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:4px 0;font-size:14px}.vl>span:first-child{min-width:64px}
+.vl.big{padding:10px 0;border-bottom:1px solid var(--line)}.ph{font-weight:600;margin-right:auto}
+.mini{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:0 14px;border-radius:99px;border:1px solid var(--line);background:#fff;color:var(--pri);font-weight:700;text-decoration:none;font-size:14px}
+.stgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.st{min-height:48px;border:1.5px solid var(--line);background:#fff;border-radius:14px;font:inherit;font-weight:600;font-size:14px;padding:6px}.st.on{background:var(--pri);border-color:var(--pri);color:#fff}
 </style></head><body>
 
 <div id="login" class="login" hidden>
@@ -156,13 +174,15 @@ body[data-tab]:not([data-tab="in"]){padding-bottom:calc(88px + env(safe-area-ins
       <button class="fab" id="add">+ New teen</button>
     </main>
     <main id="records" hidden></main>
+    <main id="fu" hidden></main>
     <main id="dash" hidden></main>
     <main id="set" hidden></main>
     <main id="soon" hidden></main>
   </div>
   <nav>
-    <button class="on" data-t="in"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><span>Check In</span></button><button data-t="rec"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>Records</span></button>
-    <button data-t="dash"><svg viewBox="0 0 24 24" aria-hidden="true"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg><span>Dashboard</span></button><button data-t="set"><svg viewBox="0 0 24 24" aria-hidden="true"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg><span>Settings</span></button>
+    <button class="on" data-t="in"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><span>Check In</span></button><button data-t="fu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span>Follow up</span><b class="badge" id="fu-badge" hidden></b></button>
+    <button data-t="rec"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>Records</span></button><button data-t="dash"><svg viewBox="0 0 24 24" aria-hidden="true"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg><span>Dashboard</span></button>
+    <button data-t="set"><svg viewBox="0 0 24 24" aria-hidden="true"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg><span>Settings</span></button>
   </nav>
 </div>
 <div id="sheet" class="sheet" hidden></div>
@@ -173,6 +193,7 @@ import { createStore, todayStr, ageOf, svcAt, HOME } from './store.js';
 import { APPS_SCRIPT_URL } from './config.js';
 import { initRecords } from './records.js';
 import { initDashboard } from './dashboard.js';
+import { initFollowup } from './followup.js';
 import { initSettings } from './settings.js';
 
 const $ = s => document.querySelector(s);
@@ -524,13 +545,14 @@ $('#add').onclick = () => {
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
   document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
   const ci = b.dataset.t === 'in';
-  const t = b.dataset.t; document.body.dataset.tab = t; ['in:#checkin', 'rec:#records', 'dash:#dash', 'set:#set'].forEach(x => { const [k, id] = x.split(':'); $(id).hidden = t !== k; }); $('#soon').hidden = true; $('#add').hidden = !ci || mode !== 'in';
+  const t = b.dataset.t; document.body.dataset.tab = t; ['in:#checkin', 'fu:#fu', 'rec:#records', 'dash:#dash', 'set:#set'].forEach(x => { const [k, id] = x.split(':'); $(id).hidden = t !== k; }); $('#soon').hidden = true; $('#add').hidden = !ci || mode !== 'in';
   $('header b').textContent = b.querySelector('span').textContent;
-  ({ rec: records, dash, set: settings })[t]?.show();
+  ({ rec: records, dash, set: settings, fu: followup })[t]?.show();
 });
 
 const records = initRecords({ store, getV: () => V, esc, toast, sheet, closeSheet });
-const dash = initDashboard({ store, getV: () => V, esc, toast, unlock: records.unlock });
+const followup = initFollowup({ store, getV: () => V, getCtx: () => ctx, esc, toast, sheet, closeSheet });
+const dash = initDashboard({ store, getV: () => V, esc, toast, unlock: records.unlock, goFollowup: () => document.querySelector('nav [data-t="fu"]').click() });
 const settings = initSettings({ store, getV: () => V, esc, toast, sheet, closeSheet, unlock: records.unlock });
 
 /* ---------- login + boot ---------- */
@@ -538,7 +560,7 @@ function showLogin(msg) {
   $('#app').hidden = true; $('#login').hidden = false; $('#l-name').value = store.auth.usher || '';
   if (msg) $('#lmsg').textContent = msg;
 }
-function enter() { $('#login').hidden = true; $('#app').hidden = false; store.start(viewDate); loadRecent(true); render(); }
+function enter() { $('#login').hidden = true; $('#app').hidden = false; store.start(viewDate); loadRecent(true); render(); followup.load(true); }
 $('#l-go').onclick = async () => {
   const b = $('#l-go'); b.disabled = true;
   try { await store.login($('#l-code').value.trim(), $('#l-pin').value.trim() || undefined, $('#l-name').value.trim() || 'Usher'); enter(); }
@@ -553,7 +575,7 @@ document.querySelectorAll('.eye').forEach(b => b.onclick = () => { // show / hid
 store.subscribe((v, s) => {
   V = v; pill(s);
   if (store.locked && $('#login').hidden) showLogin('Access code changed. Enter the new one.');
-  render(); records.onData(); dash.onData(); settings.onData();
+  render(); records.onData(); dash.onData(); settings.onData(); followup.onData();
 });
 if (store.auth.code || store.auth.pin) enter(); else showLogin();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');

@@ -138,7 +138,7 @@ export function initRecords({ store, getV, esc, toast, sheet, closeSheet }) {
     const row = (k, v) => v ? `<div class="stat"><span class="muted">${k}</span><b>${esc(v)}</b></div>` : '';
     sheet(`<div class="left"><h2>${esc(t.fullName)}${t.status === 'archived' ? ' (archived)' : ''}</h2>
       ${row('Gender', t.gender)}${row('Age', isNaN(age) ? '' : age)}${row('Date of birth', t.dob)}${row('Phone', t.phone)}${row('Guardian', t.guardianName)}
-      ${admin ? row('Guardian phone', t.guardianPhone) + row('Medical notes', t.medicalNotes) : ''}${row(HOME, bName(t.homeBranchId))}${row('Added', t.dateAdded)}${row('First-time visitor at sign-up', t.firstTimer === 'yes' ? 'Yes' : t.firstTimer === 'no' ? 'No' : '')}
+      ${row('Guardian phone', t.guardianPhone)}${admin ? row('Medical notes', t.medicalNotes) : ''}${row(HOME, bName(t.homeBranchId))}${row('Added', t.dateAdded)}${row('First-time visitor at sign-up', t.firstTimer === 'yes' ? 'Yes' : t.firstTimer === 'no' ? 'No' : '')}
       <h3>Attendance</h3><div id="p-att" class="muted">Loading…</div>
       ${admin ? `<button class="btn" id="p-edit">Edit</button><button class="btn" id="p-arch">${t.status === 'archived' ? 'Restore' : 'Archive'}</button>` : ''}
       <button class="btn primary" id="p-x">Close</button></div>`);

@@ -8,10 +8,11 @@ const SCHEMA = {
   Teenagers: ['id','fullName','gender','age','dob','phone','guardianName','guardianPhone','homeBranchId','medicalNotes','dateAdded','status','opId','firstTimer'],
   Branches:  ['id','name','location'],
   Services:  ['id','name','day','time','branchId'],
-  Attendance:['id','teenId','branchId','serviceId','date','checkIn','checkOut','checkoutNote','guardianCode','checkedInBy','checkedOutBy','codeCheck','status','opId','teenName','branchName','serviceName','adjusted']
+  Attendance:['id','teenId','branchId','serviceId','date','checkIn','checkOut','checkoutNote','guardianCode','checkedInBy','checkedOutBy','codeCheck','status','opId','teenName','branchName','serviceName','adjusted'],
+  FollowUps: ['id','teenId','teenName','status','note','by','at','opId']
 };
 const TEEN_EDIT = ['fullName','gender','age','dob','phone','guardianName','guardianPhone','homeBranchId','medicalNotes','status','firstTimer'];
-const ADMIN_ONLY = ['guardianPhone','medicalNotes'];
+const ADMIN_ONLY = ['medicalNotes']; // the team can see guardian phone numbers (vetted users); medical notes stay admin-only
 
 function setup() {
   const ss = SpreadsheetApp.getActive();
@@ -50,7 +51,7 @@ function role_(p) {
 }
 
 const ROUTES = { // [handler, adminOnly]
-  state: [state_, false], checkIn: [checkIn_, false], checkOut: [checkOut_, false], checkOutAll: [checkOutAll_, false],
+  state: [state_, false], addFollowUp: [addFollowUp_, false], checkIn: [checkIn_, false], checkOut: [checkOut_, false], checkOutAll: [checkOutAll_, false],
   undoCheckIn: [undoCheckIn_, false], undoCheckOut: [undoCheckOut_, false], addTeen: [addTeen_, false],
   saveTeen: [saveTeen_, true], saveBranch: [p => saveSimple_('Branches', ['name','location'], 'b', p.item), true],
   saveService: [p => saveSimple_('Services', ['name','day','time','branchId'], 's', p.item), true],
@@ -65,7 +66,7 @@ function route_(p, role) {
 
 /* ---------- Sheet helpers ---------- */
 function tbl_(name) {
-  const sh = SpreadsheetApp.getActive().getSheetByName(name), cols = SCHEMA[name];
+  const sh = SpreadsheetApp.getActive().getSheetByName(name) || makeSheet_(name), cols = SCHEMA[name];
   const row = o => cols.map(c => o[c] == null ? '' : String(o[c]));
   return {
     all() {
@@ -112,7 +113,8 @@ function state_(p, role) {
     teens: tbl_('Teenagers').all().filter(t => role === 'admin' || t.status !== 'archived').map(t => pubTeen_(t, role)),
     attendance: tbl_('Attendance').all().filter(r => r.date === p.date && r.status !== 'void').map(strip_), // today's rows include the pickup code so ushers can confirm it
     branches: tbl_('Branches').all().map(strip_),
-    services: tbl_('Services').all().map(strip_)
+    services: tbl_('Services').all().map(strip_),
+    followups: followups_()
   };
 }
 function attendanceRange_(p) {
@@ -266,4 +268,30 @@ function backfillNames() {
   const A = tbl_('Attendance').all(); if (!A.length) return;
   const out = A.map(r => [nm.get(r.teenId) || r.teenName || '', bn.get(r.branchId) || r.branchName || '', sn.get(r.serviceId) || r.serviceName || '']);
   SpreadsheetApp.getActive().getSheetByName('Attendance').getRange(2, SCHEMA.Attendance.indexOf('teenName') + 1, out.length, 3).setNumberFormat('@').setValues(out);
+}
+
+// A tab added by an update is created the first time it is needed, so nothing breaks before setup() is run again.
+function makeSheet_(name) {
+  const sh = SpreadsheetApp.getActive().insertSheet(name), h = SCHEMA[name];
+  sh.getRange(1, 1, 1, h.length).setValues([h]).setFontWeight('bold'); sh.setFrozenRows(1);
+  sh.getRange(2, 1, sh.getMaxRows() - 1, h.length).setNumberFormat('@');
+  return sh;
+}
+
+/* ---------- Follow up: a log of calls and visits to absent teens (append-only) ---------- */
+const FU_STATUS = ['called', 'willcome', 'noanswer', 'away', 'moved'];
+function followups_() {
+  try { const cut = new Date(Date.now() - 150 * 864e5).toISOString(); return tbl_('FollowUps').all().filter(r => r.at >= cut).map(strip_); } catch (e) { return []; }
+}
+function addFollowUp_(p) {
+  return withLock_(() => {
+    const F = tbl_('FollowUps'), hit = p.opId && F.all().find(r => r.opId === p.opId);
+    if (hit) return { followup: strip_(hit), replayed: true };
+    if (FU_STATUS.indexOf(p.status) < 0) throw fail_('bad_status', 'Unknown status');
+    const t = tbl_('Teenagers').all().find(x => x.id === p.teenId);
+    if (!t) throw fail_('no_teen', 'Teen not found');
+    const rec = { id: newId_('fu'), teenId: t.id, teenName: t.fullName, status: p.status, note: String(p.note || '').slice(0, 300), by: p.by || '', at: time_(p.at), opId: p.opId || '' };
+    F.add(rec);
+    return { followup: strip_(rec) };
+  });
 }
